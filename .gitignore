@@ -1,0 +1,13 @@
+node_modules/
+.env
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+backups/*.gz
+backups/*.archive
+uploads/*
+!uploads/.gitkeep
+dist-electron/
+

@@ -1,0 +1,56 @@
+{
+  "name": "tech-mart",
+  "version": "1.0.0",
+  "description": "TECH MART - Wholesale Mobile Store Management System",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:frontend": "cd frontend && npm run build",
+    "start:backend": "cd backend && npm start",
+    "start": "npm run start:backend",
+    "seed": "cd backend && npm run seed",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "electron:start": "electron .",
+    "electron:dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"electron .\"",
+    "electron:build": "npm run build:frontend && electron-builder --win"
+  },
+  "keywords": [
+    "wholesale",
+    "mobile",
+    "inventory",
+    "billing",
+    "pos"
+  ],
+  "author": "TECH MART",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.techmart.wholesale",
+    "productName": "Tech Mart",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "backend/**/*",
+      "frontend/dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
