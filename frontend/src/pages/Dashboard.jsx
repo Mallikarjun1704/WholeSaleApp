@@ -174,6 +174,8 @@ const Dashboard = () => {
   const activities = activitiesData?.data || [];
 
   const statCardsData = [
+    { title: 'Amount in Hand', value: formatCurrency(stats.cashInHand), icon: <StockValueIcon />, color: '#10B981' },
+    { title: 'Pending Collection', value: formatCurrency(stats.pendingCollection), icon: <CreditIcon />, color: '#F59E0B' },
     { title: 'Total Products', value: stats.totalProducts || 0, icon: <InventoryIcon />, color: '#6366F1' },
     { title: 'Total Quantity', value: stats.totalQuantity || 0, icon: <CategoryIcon />, color: '#8B5CF6' },
     { title: "Today's Sales", value: formatCurrency(stats.todaySales), icon: <SalesIcon />, color: '#0EA5E9' },

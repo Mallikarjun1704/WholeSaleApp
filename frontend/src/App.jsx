@@ -16,6 +16,10 @@ import { useCheckSetupQuery } from './api/authApi';
 import Login from './pages/Login';
 import Setup from './pages/Setup';
 import Dashboard from './pages/Dashboard';
+import Inventory from './pages/Inventory';
+import Billing from './pages/Billing';
+import Customers from './pages/Customers';
+import Suppliers from './pages/Suppliers';
 import Unauthorized from './pages/Unauthorized';
 
 const App = () => {
@@ -83,17 +87,17 @@ const App = () => {
             {/* Unauthorized */}
             <Route path="/unauthorized" element={<Unauthorized />} />
 
-            {/* Inventory - placeholders for Phase 4 */}
-            <Route path="/inventory" element={<PlaceholderPage title="Inventory" />} />
+            {/* Inventory */}
+            <Route path="/inventory" element={<Inventory />} />
 
-            {/* Billing - placeholder for Phase 6 */}
-            <Route path="/billing" element={<PlaceholderPage title="Billing" />} />
+            {/* Billing */}
+            <Route path="/billing" element={<Billing />} />
 
-            {/* Customers - placeholder for Phase 5 */}
-            <Route path="/customers" element={<PlaceholderPage title="Customers" />} />
+            {/* Customers */}
+            <Route path="/customers" element={<Customers />} />
 
-            {/* Suppliers - placeholder for Phase 5 */}
-            <Route path="/suppliers" element={<PlaceholderPage title="Suppliers" />} />
+            {/* Suppliers */}
+            <Route path="/suppliers" element={<Suppliers />} />
 
             {/* Credits - placeholder for Phase 7 */}
             <Route path="/credits" element={<PlaceholderPage title="Credit Management" />} />
