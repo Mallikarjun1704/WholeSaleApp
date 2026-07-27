@@ -236,27 +236,41 @@ const getBillsByCustomer = asyncHandler(async (req, res) => {
  */
 const updateBillPaymentStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
+
+  // Only master / admin can update payment status
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Only master/admin user can change payment status',
+    });
+  }
+
   const bill = await Bill.findById(req.params.id);
 
   if (!bill) {
     return res.status(404).json({ success: false, message: 'Bill not found' });
   }
 
-  if (!['Pending', 'Paid'].includes(status)) {
-    return res.status(400).json({ success: false, message: 'Invalid status. Use Pending or Paid.' });
-  }
-
-  if (bill.status === status) {
+  // Once Paid, status cannot be changed back
+  if (bill.status === 'Paid') {
     return res.status(400).json({
       success: false,
-      message: `Bill is already marked as ${status}`,
+      message: 'Once marked as Paid, the sales bill status cannot be changed back to Pending.',
     });
   }
 
-  const previousStatus = bill.status;
-  bill.status = status;
-  bill.paidDate = status === 'Paid' ? new Date() : null;
+  if (status !== 'Paid') {
+    return res.status(400).json({ success: false, message: 'Status can only be updated to Paid' });
+  }
+
+  bill.status = 'Paid';
+  bill.paidDate = new Date();
   await bill.save();
+
+  // Deduct from customer pending credit when bill is marked Paid
+  await Customer.findByIdAndUpdate(bill.customer, {
+    $inc: { pendingCredit: -bill.finalAmount },
+  });
 
   // Update customer pending credit
   if (status === 'Paid' && previousStatus === 'Pending') {

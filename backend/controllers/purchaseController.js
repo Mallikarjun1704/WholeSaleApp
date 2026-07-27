@@ -10,12 +10,22 @@ const { asyncHandler } = require('../middleware/errorHandler');
 const generateBatchId = async () => {
   const today = new Date();
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-  const count = await Purchase.countDocuments({
-    createdAt: {
-      $gte: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-    },
-  });
-  return `BATCH-${dateStr}-${String(count + 1).padStart(3, '0')}`;
+  let counter = (await Purchase.countDocuments()) + 1;
+  let unique = false;
+  let batchId = '';
+
+  while (!unique) {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    batchId = `BATCH-${dateStr}-${counter}-${randomSuffix}`;
+    const existsPurchase = await Purchase.findOne({ batchId });
+    const existsBatch = await Batch.findOne({ batchId });
+    if (!existsPurchase && !existsBatch) {
+      unique = true;
+    } else {
+      counter++;
+    }
+  }
+  return batchId;
 };
 
 /**
@@ -92,9 +102,9 @@ const createPurchase = asyncHandler(async (req, res) => {
   }
 
   // Calculate commission and total
-  const commPercent = Number(commissionPercent) || 0;
+  const commPercent = Math.min(100, Math.max(0, Number(commissionPercent) || 0));
   const commAmount = Math.round((subtotal * commPercent) / 100);
-  const travel = Number(travelCharge) || 0;
+  const travel = Math.max(0, Number(travelCharge) || 0);
   const totalAmount = subtotal + commAmount + travel;
 
   // Generate batch ID
@@ -116,10 +126,11 @@ const createPurchase = asyncHandler(async (req, res) => {
   });
 
   // Create Batch records and update Product stock for each item
-  for (const item of processedItems) {
-    // Create batch record
+  for (let idx = 0; idx < processedItems.length; idx++) {
+    const item = processedItems[idx];
+    // Create batch record per item
     await Batch.create({
-      batchId,
+      batchId: processedItems.length > 1 ? `${batchId}-${idx + 1}` : batchId,
       product: item.product,
       purchase: purchase._id,
       supplier: supplier._id,
@@ -198,39 +209,41 @@ const getPurchaseById = asyncHandler(async (req, res) => {
  */
 const updatePurchasePaymentStatus = asyncHandler(async (req, res) => {
   const { paymentStatus } = req.body;
+
+  // Only master / admin can update payment status
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Only master/admin user can change payment status',
+    });
+  }
+
   const purchase = await Purchase.findById(req.params.id);
 
   if (!purchase) {
     return res.status(404).json({ success: false, message: 'Purchase not found' });
   }
 
-  if (!['Paid', 'Unpaid'].includes(paymentStatus)) {
-    return res.status(400).json({ success: false, message: 'Invalid payment status' });
-  }
-
-  // Prevent duplicate status change
-  if (purchase.paymentStatus === paymentStatus) {
+  // Once Paid, status cannot be reverted back to Unpaid
+  if (purchase.paymentStatus === 'Paid') {
     return res.status(400).json({
       success: false,
-      message: `Purchase is already marked as ${paymentStatus}`,
+      message: 'Once marked as Paid, the bill status cannot be changed back to Unpaid.',
     });
   }
 
-  const previousStatus = purchase.paymentStatus;
-  purchase.paymentStatus = paymentStatus;
-  purchase.paidDate = paymentStatus === 'Paid' ? new Date() : null;
+  if (paymentStatus !== 'Paid') {
+    return res.status(400).json({ success: false, message: 'Status can only be updated to Paid' });
+  }
+
+  purchase.paymentStatus = 'Paid';
+  purchase.paidDate = new Date();
   await purchase.save();
 
   // Update supplier pending credit
-  if (paymentStatus === 'Paid' && previousStatus === 'Unpaid') {
-    await Supplier.findByIdAndUpdate(purchase.supplier, {
-      $inc: { pendingCredit: -purchase.totalAmount },
-    });
-  } else if (paymentStatus === 'Unpaid' && previousStatus === 'Paid') {
-    await Supplier.findByIdAndUpdate(purchase.supplier, {
-      $inc: { pendingCredit: purchase.totalAmount },
-    });
-  }
+  await Supplier.findByIdAndUpdate(purchase.supplier, {
+    $inc: { pendingCredit: -purchase.totalAmount },
+  });
 
   res.status(200).json({
     success: true,

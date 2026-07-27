@@ -56,8 +56,8 @@ const ProductRow = ({ product }) => {
           </IconButton>
         </TableCell>
         <TableCell sx={{ fontWeight: 600 }}>{product.name}</TableCell>
-        <TableCell>{product.brand?.name || '-'}</TableCell>
-        <TableCell>{product.category?.name || '-'}</TableCell>
+        <TableCell>{product.brand?.name || product.brand || 'Generic'}</TableCell>
+        <TableCell>{product.category?.name || product.category || 'General'}</TableCell>
         <TableCell>{product.sku}</TableCell>
         <TableCell align="center">
           <Chip
@@ -97,7 +97,7 @@ const Inventory = () => {
         <Box>
           <Typography variant="h4" fontWeight={800}>Inventory</Typography>
           <Typography variant="body2" color="text.secondary">
-            View all mobile stock with batch-wise purchase details.
+            View stock availability, low stock indicators, and batch details.
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -136,7 +136,7 @@ const Inventory = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Brand</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Category</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>SKU</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 700 }}>Stock</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Stock Availability</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700 }}>Selling Price</TableCell>
               </TableRow>
             </TableHead>
@@ -154,7 +154,7 @@ const Inventory = () => {
               ) : (
                 <TableRow>
                   <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                    No products found. Add products via supplier purchase bills.
+                    No inventory records found. Stock is added when entering supplier purchase bills.
                   </TableCell>
                 </TableRow>
               )}

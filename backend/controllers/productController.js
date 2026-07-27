@@ -109,11 +109,32 @@ const createProduct = asyncHandler(async (req, res) => {
   } = req.body;
 
   // Validate required
-  if (!name || !sku || !category || !brand) {
+  if (!name || !sku) {
     return res.status(400).json({
       success: false,
-      message: 'Name, SKU, Category, and Brand are required fields',
+      message: 'Name and SKU are required fields',
     });
+  }
+
+  const Category = require('../models/Category');
+  const Brand = require('../models/Brand');
+
+  let categoryId = category;
+  if (!categoryId) {
+    let defaultCat = await Category.findOne({ name: 'General' });
+    if (!defaultCat) {
+      defaultCat = await Category.create({ name: 'General', description: 'Default Category' });
+    }
+    categoryId = defaultCat._id;
+  }
+
+  let brandId = brand;
+  if (!brandId) {
+    let defaultBrand = await Brand.findOne({ name: 'Generic' });
+    if (!defaultBrand) {
+      defaultBrand = await Brand.create({ name: 'Generic', description: 'Default Brand' });
+    }
+    brandId = defaultBrand._id;
   }
 
   // Check duplicate SKU
@@ -143,8 +164,8 @@ const createProduct = asyncHandler(async (req, res) => {
     modelNumber: modelNumber ? modelNumber.trim() : '',
     sku: sku.trim(),
     barcode: barcode ? barcode.trim() : undefined,
-    category,
-    brand,
+    category: categoryId,
+    brand: brandId,
     purchasePrice: Number(purchasePrice) || 0,
     sellingPrice: Number(sellingPrice) || 0,
     gstRate: Number(gstRate) || 18,

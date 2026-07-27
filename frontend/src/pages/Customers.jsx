@@ -104,6 +104,12 @@ const CustomerRow = ({ customer, onEdit, onDelete }) => {
 
   const handlePaymentToggle = async (bill) => {
     const newStatus = bill.status === 'Paid' ? 'Pending' : 'Paid';
+    if (newStatus === 'Paid') {
+      const confirm1 = window.confirm(`Confirm payment collection for Bill #${bill.billNumber}? Total: ₹${bill.finalAmount}`);
+      if (!confirm1) return;
+      const confirm2 = window.confirm(`Are you SURE you want to mark this bill as PAID? This will clear retail store pending balance.`);
+      if (!confirm2) return;
+    }
     try {
       await updateBillPayment({ id: bill._id, status: newStatus }).unwrap();
     } catch (err) {

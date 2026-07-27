@@ -10,6 +10,7 @@ import {
 } from '@mui/icons-material';
 import { useGetBillsQuery, useCreateBillMutation, useUpdateBillPaymentMutation } from '../api/billingApi';
 import { useGetCustomersQuery } from '../api/customerApi';
+import { useGetInventoryQuery } from '../api/inventoryApi';
 
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
@@ -171,7 +172,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
             <Grid item xs={5}>
               <TextField select label="Select Mobile Model *" value={item.productId} onChange={(e) => updateItem(i, 'productId', e.target.value)} fullWidth size="small" SelectProps={{ native: true }}>
                 <option value="">Select mobile...</option>
-                {products.map(p => <option key={p._id} value={p._id} disabled={p.stock === 0}>{p.name} ({p.sku}) [Stock: {p.stock}]</option>)}
+                {products.map(p => <option key={p._id} value={p._id}>{p.name} ({p.sku}) [Stock: {p.stock}]{p.stock === 0 ? ' - (Out of Stock)' : ''}</option>)}
               </TextField>
             </Grid>
             <Grid item xs={2}>
@@ -220,25 +221,20 @@ const Billing = () => {
   const { data: customersData } = useGetCustomersQuery('');
   const [updateBillPayment] = useUpdateBillPaymentMutation();
 
-  const [productsList, setProductsList] = useState([]);
   const [selectedBill, setSelectedBill] = useState(null);
-
-  // Get active products for dropdown
-  useEffect(() => {
-    fetch('/api/products?pageSize=500', {
-      headers: { Authorization: `Bearer ${JSON.parse(localStorage.getItem('auth') || '{}')?.accessToken || ''}` },
-    })
-      .then(r => r.json())
-      .then(d => setProductsList(d?.data?.products || []))
-      .catch(() => {});
-  }, [tab]);
+  const { data: inventoryData } = useGetInventoryQuery({});
+  const productsList = inventoryData?.data || [];
 
   const bills = billsData?.data || [];
   const customers = customersData?.data || [];
 
-  const handleMarkAsPaid = async (billId) => {
+  const handleMarkAsPaid = async (bill) => {
+    const confirm1 = window.confirm(`Confirm payment collection for Bill #${bill.billNumber}? Amount: ₹${bill.finalAmount}`);
+    if (!confirm1) return;
+    const confirm2 = window.confirm(`Are you SURE you want to mark this bill as PAID? This will update cash and pending collection balances.`);
+    if (!confirm2) return;
     try {
-      await updateBillPayment({ id: billId, status: 'Paid' }).unwrap();
+      await updateBillPayment({ id: bill._id, status: 'Paid' }).unwrap();
     } catch (err) {
       alert(err?.data?.message || 'Failed to update payment status');
     }
@@ -315,7 +311,7 @@ const Billing = () => {
                         <TableCell>
                           <Button size="small" onClick={() => setSelectedBill(b)} sx={{ mr: 1 }}>View</Button>
                           {b.status === 'Pending' && (
-                            <Button size="small" startIcon={<CheckCircleIcon />} color="success" variant="outlined" onClick={() => handleMarkAsPaid(b._id)}>
+                            <Button size="small" startIcon={<CheckCircleIcon />} color="success" variant="outlined" onClick={() => handleMarkAsPaid(b)}>
                               Mark Paid
                             </Button>
                           )}
