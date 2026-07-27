@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Box, Typography, Card, Button, TextField, InputAdornment, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog, DialogTitle, DialogContent,
-  DialogActions, Collapse, Skeleton, alpha, Divider, Grid, Stack,
+  DialogActions, Collapse, Skeleton, alpha, Divider, Grid, Stack, Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -10,7 +10,7 @@ import {
   Receipt as BillIcon, Close as CloseIcon, PhoneAndroid as PhoneIcon,
   Visibility as ViewIcon,
 } from '@mui/icons-material';
-import { useGetSuppliersQuery, useCreateSupplierMutation, useUpdateSupplierMutation, useDeleteSupplierMutation } from '../api/supplierApi';
+import { useGetSuppliersQuery, useCreateSupplierMutation, useUpdateSupplierMutation } from '../api/supplierApi';
 import { useGetPurchasesBySupplierQuery, useCreatePurchaseMutation, useUpdatePurchasePaymentMutation } from '../api/purchaseApi';
 import { useGetInventoryQuery, useCreateProductMutation } from '../api/inventoryApi';
 
@@ -45,6 +45,7 @@ const SupplierFormDialog = ({ open, onClose, supplier, onSave }) => {
 // ========== Quick Add Mobile Product Dialog (Inside Supplier Flow) ==========
 const QuickAddProductDialog = ({ open, onClose, onCreated }) => {
   const [createProduct, { isLoading }] = useCreateProductMutation();
+  const [errorMsg, setErrorMsg] = useState('');
   const [form, setForm] = useState({
     name: '',
     modelNumber: '',
@@ -55,6 +56,7 @@ const QuickAddProductDialog = ({ open, onClose, onCreated }) => {
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async () => {
+    setErrorMsg('');
     try {
       const res = await createProduct({
         name: form.name,
@@ -69,7 +71,7 @@ const QuickAddProductDialog = ({ open, onClose, onCreated }) => {
       }
       onClose();
     } catch (err) {
-      alert(err?.data?.message || 'Failed to add mobile item');
+      setErrorMsg(err?.data?.message || 'Failed to add mobile item');
     }
   };
 
@@ -81,6 +83,7 @@ const QuickAddProductDialog = ({ open, onClose, onCreated }) => {
       </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
+          {errorMsg && <Alert severity="error">{errorMsg}</Alert>}
           <TextField
             label="Mobile Model / Name *"
             name="name"
@@ -136,12 +139,14 @@ const QuickAddProductDialog = ({ open, onClose, onCreated }) => {
 const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProducts }) => {
   const [createPurchase, { isLoading }] = useCreatePurchaseMutation();
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [form, setForm] = useState({ invoiceNumber: '', commissionPercent: 0, travelCharge: 0, notes: '' });
   const [items, setItems] = useState([{ productId: '', quantity: '', purchasePrice: '', imeiNumbers: '' }]);
 
   const resetForm = () => {
     setForm({ invoiceNumber: '', commissionPercent: 0, travelCharge: 0, notes: '' });
     setItems([{ productId: '', quantity: '', purchasePrice: '', imeiNumbers: '' }]);
+    setErrorMsg('');
   };
 
   React.useEffect(() => {
@@ -167,6 +172,7 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
   const totalAmount = subtotal + commAmount + (Number(form.travelCharge) || 0);
 
   const handleSubmit = async () => {
+    setErrorMsg('');
     const payload = {
       supplierId,
       invoiceNumber: form.invoiceNumber,
@@ -185,13 +191,12 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
       resetForm();
       onClose();
     } catch (err) {
-      alert(err?.data?.message || 'Failed to create purchase');
+      setErrorMsg(err?.data?.message || 'Failed to create purchase bill');
     }
   };
 
   const handleProductCreated = (newProduct) => {
     if (refetchProducts) refetchProducts();
-    // Auto select newly created product in the last empty row or first row
     const updated = [...items];
     const targetIdx = updated.findIndex(i => !i.productId);
     if (targetIdx !== -1) {
@@ -210,11 +215,14 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
           <IconButton onClick={onClose}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid item xs={6}><TextField label="Invoice Number *" value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} fullWidth size="small" /></Grid>
-            <Grid item xs={3}><TextField label="Commission %" type="number" value={form.commissionPercent} onChange={(e) => setForm({ ...form, commissionPercent: e.target.value })} fullWidth size="small" /></Grid>
-            <Grid item xs={3}><TextField label="Travel Charge ₹" type="number" value={form.travelCharge} onChange={(e) => setForm({ ...form, travelCharge: e.target.value })} fullWidth size="small" /></Grid>
-          </Grid>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {errorMsg && <Alert severity="error">{errorMsg}</Alert>}
+            <Grid container spacing={2}>
+              <Grid item xs={6}><TextField label="Invoice Number *" value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} fullWidth size="small" /></Grid>
+              <Grid item xs={3}><TextField label="Commission %" type="number" value={form.commissionPercent} onChange={(e) => setForm({ ...form, commissionPercent: e.target.value })} fullWidth size="small" /></Grid>
+              <Grid item xs={3}><TextField label="Travel Charge ₹" type="number" value={form.travelCharge} onChange={(e) => setForm({ ...form, travelCharge: e.target.value })} fullWidth size="small" /></Grid>
+            </Grid>
+          </Stack>
 
           <Box sx={{ mt: 3, mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Mobile Stock Items</Typography>
@@ -369,7 +377,7 @@ const PurchaseViewDialog = ({ open, onClose, purchase }) => {
 };
 
 // ========== Supplier Row with Purchase Bills ==========
-const SupplierRow = ({ supplier, onEdit, onDelete, products, refetchProducts }) => {
+const SupplierRow = ({ supplier, onEdit, products, refetchProducts }) => {
   const [open, setOpen] = useState(false);
   const [viewPurchase, setViewPurchase] = useState(null);
   const [showPurchaseForm, setShowPurchaseForm] = useState(false);
@@ -409,8 +417,7 @@ const SupplierRow = ({ supplier, onEdit, onDelete, products, refetchProducts }) 
           <Chip label={formatCurrency(supplier.unpaidAmount)} size="small" color={supplier.unpaidAmount > 0 ? 'warning' : 'success'} variant="outlined" sx={{ fontWeight: 700 }} />
         </TableCell>
         <TableCell>
-          <IconButton size="small" onClick={() => onEdit(supplier)}><EditIcon fontSize="small" /></IconButton>
-          <IconButton size="small" onClick={() => onDelete(supplier._id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
+          <IconButton size="small" onClick={() => onEdit(supplier)} title="Edit Supplier"><EditIcon fontSize="small" /></IconButton>
         </TableCell>
       </TableRow>
       <TableRow>
@@ -511,7 +518,6 @@ const Suppliers = () => {
   const { data: inventoryData, refetch: refetchInventory } = useGetInventoryQuery({});
   const [createSupplier] = useCreateSupplierMutation();
   const [updateSupplier] = useUpdateSupplierMutation();
-  const [deleteSupplier] = useDeleteSupplierMutation();
 
   const suppliers = data?.data || [];
   const productsList = inventoryData?.data || [];
@@ -533,15 +539,6 @@ const Suppliers = () => {
   const handleEdit = (supplier) => {
     setEditingSupplier(supplier);
     setFormOpen(true);
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this supplier?')) return;
-    try {
-      await deleteSupplier(id).unwrap();
-    } catch (err) {
-      alert(err?.data?.message || 'Failed to delete supplier');
-    }
   };
 
   return (
@@ -590,7 +587,6 @@ const Suppliers = () => {
                     key={s._id}
                     supplier={s}
                     onEdit={handleEdit}
-                    onDelete={handleDelete}
                     products={productsList}
                     refetchProducts={refetchInventory}
                   />

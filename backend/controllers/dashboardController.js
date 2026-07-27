@@ -3,6 +3,9 @@ const Customer = require('../models/Customer');
 const Supplier = require('../models/Supplier');
 const Bill = require('../models/Bill');
 const Purchase = require('../models/Purchase');
+const Batch = require('../models/Batch');
+const Investment = require('../models/Investment');
+const Expense = require('../models/Expense');
 const ActivityLog = require('../models/ActivityLog');
 const { asyncHandler } = require('../middleware/errorHandler');
 
@@ -36,10 +39,9 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   });
   const todaySales = todayBills.reduce((sum, bill) => sum + bill.finalAmount, 0);
 
-  // 4. Today's Purchase (Received purchases created today)
+  // 4. Today's Purchase (All purchase bills created today)
   const todayPurchases = await Purchase.find({
     createdAt: { $gte: startOfToday },
-    status: 'Received',
   });
   const todayPurchase = todayPurchases.reduce((sum, purchase) => sum + purchase.totalAmount, 0);
 
@@ -50,11 +52,9 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     let billProfit = 0;
     for (const item of bill.items) {
       const costOfGoods = item.purchasePrice * item.quantity;
-      // Taxable amount represents revenue before taxes
       const itemProfit = item.taxableAmount - costOfGoods;
       billProfit += itemProfit;
     }
-    // Deduct discount from profit
     billProfit -= (bill.discount || 0);
 
     if (billProfit > 0) {
@@ -72,10 +72,10 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   const pendingCredit = customerCreditAgg[0]?.totalCredit || 0;
   const pendingCustomers = customerCreditAgg[0]?.count || 0;
 
-  // 7. Stock Value (Sum of purchasePrice * stock)
-  const stockValueAgg = await Product.aggregate([
-    { $match: { isActive: true } },
-    { $group: { _id: null, value: { $sum: { $multiply: ['$purchasePrice', '$stock'] } } } },
+  // 7. Stock Value (Sum of remainingQty * purchasePrice from Batch collection)
+  const stockValueAgg = await Batch.aggregate([
+    { $match: { remainingQty: { $gt: 0 } } },
+    { $group: { _id: null, value: { $sum: { $multiply: ['$purchasePrice', '$remainingQty'] } } } },
   ]);
   const stockValue = stockValueAgg[0]?.value || 0;
 
@@ -110,22 +110,43 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     }
   }
 
-  // 11. Cash in Hand: Total received from paid bills minus total paid to suppliers
+  // 11. Total Partner Investments (Investments - Withdrawals)
+  const investmentsAgg = await Investment.aggregate([
+    {
+      $group: {
+        _id: null,
+        netCapital: {
+          $sum: { $cond: [{ $eq: ['$type', 'Investment'] }, '$amount', { $multiply: ['$amount', -1] }] },
+        },
+      },
+    },
+  ]);
+  const totalInvestments = investmentsAgg[0]?.netCapital || 0;
+
+  // 12. Total Paid Sales (Money received from retail shops)
   const paidBillsAgg = await Bill.aggregate([
     { $match: { status: 'Paid' } },
     { $group: { _id: null, total: { $sum: '$finalAmount' } } },
   ]);
   const totalPaidSales = paidBillsAgg[0]?.total || 0;
 
+  // 13. Total Paid Purchases (Money paid to suppliers)
   const paidPurchasesAgg = await Purchase.aggregate([
     { $match: { paymentStatus: 'Paid' } },
     { $group: { _id: null, total: { $sum: '$totalAmount' } } },
   ]);
   const totalPaidPurchases = paidPurchasesAgg[0]?.total || 0;
 
-  const cashInHand = totalPaidSales - totalPaidPurchases;
+  // 14. Total Store Expenses
+  const expensesAgg = await Expense.aggregate([
+    { $group: { _id: null, total: { $sum: '$amount' } } },
+  ]);
+  const totalExpenses = expensesAgg[0]?.total || 0;
 
-  // 12. Pending Collection: Total unpaid bill amounts from retail stores
+  // Amount in Hand = Initial Capital + Paid Sales - Paid Purchases - Expenses
+  const cashInHand = totalInvestments + totalPaidSales - totalPaidPurchases - totalExpenses;
+
+  // 15. Pending Collection: Total unpaid bill amounts from retail stores
   const pendingCollectionAgg = await Bill.aggregate([
     { $match: { status: 'Pending' } },
     { $group: { _id: null, total: { $sum: '$finalAmount' } } },
@@ -151,6 +172,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       monthlyProfit: Math.round(monthlyProfit),
       cashInHand: Math.round(cashInHand),
       pendingCollection: Math.round(pendingCollection),
+      totalInvestments: Math.round(totalInvestments),
+      totalExpenses: Math.round(totalExpenses),
     },
   });
 });
@@ -172,7 +195,6 @@ const getDashboardChartData = asyncHandler(async (req, res) => {
 
   const purchases = await Purchase.find({
     createdAt: { $gte: thirtyDaysAgo },
-    status: 'Received',
   }).sort({ createdAt: 1 });
 
   // Pre-populate last 30 days

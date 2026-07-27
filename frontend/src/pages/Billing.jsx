@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Card, Button, TextField, InputAdornment, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog, DialogTitle, DialogContent,
-  DialogActions, Skeleton, alpha, Divider, Grid, Stack, Tabs, Tab,
+  DialogActions, Skeleton, alpha, Divider, Grid, Stack, Tabs, Tab, Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon, Add as AddIcon, Delete as DeleteIcon,
@@ -78,12 +78,13 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
 // ========== Create Bill View ==========
 const CreateBillTab = ({ customers, products, onComplete }) => {
   const [createBill, { isLoading }] = useCreateBillMutation();
+  const [errorMsg, setErrorMsg] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [items, setItems] = useState([{ productId: '', quantity: 1, sellingPrice: '' }]);
+  const [items, setItems] = useState([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
 
-  const addItem = () => setItems([...items, { productId: '', quantity: 1, sellingPrice: '' }]);
+  const addItem = () => setItems([...items, { productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
   const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
   const updateItem = (i, field, value) => {
     const updated = [...items];
@@ -108,8 +109,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
 
   const gstAmount = items.reduce((sum, item) => {
     if (!item.productId) return sum;
-    const prod = products.find(p => p._id === item.productId);
-    const rate = prod?.gstRate || 18;
+    const rate = Number(item.gstRate) || 0;
     const qty = Number(item.quantity) || 0;
     const price = Number(item.sellingPrice) || 0;
     return sum + Math.round((qty * price * rate) / 100);
@@ -118,6 +118,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
   const finalAmount = subtotal + gstAmount - (Number(discount) || 0);
 
   const handleSubmit = async () => {
+    setErrorMsg('');
     const payload = {
       customerId,
       discount: Number(discount) || 0,
@@ -126,22 +127,25 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
         productId: i.productId,
         quantity: Number(i.quantity),
         sellingPrice: Number(i.sellingPrice),
+        gstRate: Number(i.gstRate) || 0,
       })),
     };
     try {
       await createBill(payload).unwrap();
       setCustomerId('');
       setDiscount(0);
-      setItems([{ productId: '', quantity: 1, sellingPrice: '' }]);
+      setItems([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
+      setErrorMsg('');
       onComplete();
     } catch (err) {
-      alert(err?.data?.message || 'Failed to generate bill');
+      setErrorMsg(err?.data?.message || 'Failed to generate bill');
     }
   };
 
   return (
     <Card sx={{ p: 3 }}>
       <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Generate Wholesale Bill</Typography>
+      {errorMsg && <Alert severity="error" sx={{ mb: 2 }}>{errorMsg}</Alert>}
       <Grid container spacing={2.5} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6}>
           <TextField select label="Retail Store (Customer) *" value={customerId} onChange={(e) => setCustomerId(e.target.value)} fullWidth size="small" SelectProps={{ native: true }}>
@@ -169,7 +173,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
 
         return (
           <Grid container spacing={1.5} key={i} sx={{ mb: 1.5, alignItems: 'center' }}>
-            <Grid item xs={5}>
+            <Grid item xs={4}>
               <TextField select label="Select Mobile Model *" value={item.productId} onChange={(e) => updateItem(i, 'productId', e.target.value)} fullWidth size="small" SelectProps={{ native: true }}>
                 <option value="">Select mobile...</option>
                 {products.map(p => <option key={p._id} value={p._id}>{p.name} ({p.sku}) [Stock: {p.stock}]{p.stock === 0 ? ' - (Out of Stock)' : ''}</option>)}
@@ -184,8 +188,16 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
                 helperText={selectedProd ? `Max: ${availableStock}` : ''}
               />
             </Grid>
-            <Grid item xs={3}>
+            <Grid item xs={2.5}>
               <TextField label="Selling Price ₹ *" type="number" value={item.sellingPrice} onChange={(e) => updateItem(i, 'sellingPrice', e.target.value)} fullWidth size="small" />
+            </Grid>
+            <Grid item xs={1.5}>
+              <TextField
+                label="GST %" type="number" value={item.gstRate}
+                onChange={(e) => updateItem(i, 'gstRate', e.target.value)}
+                fullWidth size="small"
+                inputProps={{ min: 0, max: 100, step: 1 }}
+              />
             </Grid>
             <Grid item xs={2}>
               {items.length > 1 && (
@@ -200,7 +212,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
       <Divider sx={{ my: 2 }} />
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 4, mb: 3 }}>
         <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(subtotal)}</strong></Typography>
-        <Typography variant="body2" color="text.secondary">GST (18% Avg): <strong>{formatCurrency(gstAmount)}</strong></Typography>
+        <Typography variant="body2" color="text.secondary">GST Amount: <strong>{formatCurrency(gstAmount)}</strong></Typography>
         <Typography variant="subtitle1" fontWeight={800} color="primary.main">Grand Total: {formatCurrency(finalAmount)}</Typography>
       </Box>
 

@@ -20,6 +20,8 @@ import Inventory from './pages/Inventory';
 import Billing from './pages/Billing';
 import Customers from './pages/Customers';
 import Suppliers from './pages/Suppliers';
+import Investments from './pages/Investments';
+import Expenses from './pages/Expenses';
 import Unauthorized from './pages/Unauthorized';
 
 const App = () => {
@@ -99,6 +101,12 @@ const App = () => {
             {/* Suppliers */}
             <Route path="/suppliers" element={<Suppliers />} />
 
+            {/* Investments / Capital */}
+            <Route path="/investments" element={<Investments />} />
+
+            {/* Expenses */}
+            <Route path="/expenses" element={<Expenses />} />
+
             {/* Credits - placeholder for Phase 7 */}
             <Route path="/credits" element={<PlaceholderPage title="Credit Management" />} />
 
@@ -108,16 +116,6 @@ const App = () => {
               element={
                 <ProtectedRoute roles={['admin']}>
                   <PlaceholderPage title="Reports" />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Expenses - placeholder for Phase 8 */}
-            <Route
-              path="/expenses"
-              element={
-                <ProtectedRoute roles={['admin']}>
-                  <PlaceholderPage title="Expenses" />
                 </ProtectedRoute>
               }
             />

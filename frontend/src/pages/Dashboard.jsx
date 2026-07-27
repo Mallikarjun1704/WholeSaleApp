@@ -175,6 +175,8 @@ const Dashboard = () => {
 
   const statCardsData = [
     { title: 'Amount in Hand', value: formatCurrency(stats.cashInHand), icon: <StockValueIcon />, color: '#10B981' },
+    { title: 'Partner Capital', value: formatCurrency(stats.totalInvestments), icon: <CreditIcon />, color: '#6366F1' },
+    { title: 'Store Expenses', value: formatCurrency(stats.totalExpenses), icon: <LossIcon />, color: '#EF4444' },
     { title: 'Pending Collection', value: formatCurrency(stats.pendingCollection), icon: <CreditIcon />, color: '#F59E0B' },
     { title: 'Total Products', value: stats.totalProducts || 0, icon: <InventoryIcon />, color: '#6366F1' },
     { title: 'Total Quantity', value: stats.totalQuantity || 0, icon: <CategoryIcon />, color: '#8B5CF6' },

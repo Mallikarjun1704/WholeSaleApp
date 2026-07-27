@@ -69,7 +69,7 @@ const createBill = asyncHandler(async (req, res) => {
 
     const sellingPrice = Number(item.sellingPrice);
     const taxableAmount = sellingPrice * qty;
-    const gstRate = product.gstRate || 18;
+    const gstRate = item.gstRate !== undefined ? Number(item.gstRate) : 0;
     const gstAmount = Math.round((taxableAmount * gstRate) / 100);
     const itemTotal = taxableAmount + gstAmount;
 
@@ -271,17 +271,6 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
   await Customer.findByIdAndUpdate(bill.customer, {
     $inc: { pendingCredit: -bill.finalAmount },
   });
-
-  // Update customer pending credit
-  if (status === 'Paid' && previousStatus === 'Pending') {
-    await Customer.findByIdAndUpdate(bill.customer, {
-      $inc: { pendingCredit: -bill.finalAmount },
-    });
-  } else if (status === 'Pending' && previousStatus === 'Paid') {
-    await Customer.findByIdAndUpdate(bill.customer, {
-      $inc: { pendingCredit: bill.finalAmount },
-    });
-  }
 
   const updatedBill = await Bill.findById(bill._id)
     .populate('customer', 'shopName ownerName phone')

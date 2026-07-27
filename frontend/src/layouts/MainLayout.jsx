@@ -33,6 +33,7 @@ import {
   CreditCard as CreditIcon,
   Assessment as ReportsIcon,
   AccountBalanceWallet as ExpenseIcon,
+  AccountBalance as CapitalIcon,
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
   DarkMode as DarkModeIcon,
@@ -83,9 +84,10 @@ const MainLayout = () => {
     { text: 'Billing', icon: <ReceiptIcon />, path: '/billing' },
     { text: 'Customers', icon: <PeopleIcon />, path: '/customers' },
     { text: 'Suppliers', icon: <SupplierIcon />, path: '/suppliers' },
+    { text: 'Investments', icon: <CapitalIcon />, path: '/investments' },
+    { text: 'Expenses', icon: <ExpenseIcon />, path: '/expenses' },
     { text: 'Credits', icon: <CreditIcon />, path: '/credits' },
     { text: 'Reports', icon: <ReportsIcon />, path: '/reports', adminOnly: true },
-    { text: 'Expenses', icon: <ExpenseIcon />, path: '/expenses', adminOnly: true },
   ];
 
   const settingsItems = [
