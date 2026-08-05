@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  Box, Typography, Card, Button, TextField, InputAdornment, Table, TableBody, TableCell,
+  Box, Typography, Card, Button, TextField, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog, DialogTitle, DialogContent,
-  DialogActions, Skeleton, alpha, Divider, Grid, Stack, Tabs, Tab, Alert,
+  DialogActions, Skeleton, Divider, Grid, Stack, Tabs, Tab, Alert, Paper,
 } from '@mui/material';
 import {
-  Search as SearchIcon, Add as AddIcon, Delete as DeleteIcon,
+  Add as AddIcon, Delete as DeleteIcon,
   Receipt as BillIcon, Close as CloseIcon, CheckCircle as CheckCircleIcon,
+  PictureAsPdf as PdfIcon, Download as DownloadIcon, Visibility as ViewIcon,
+  Print as PrintIcon, CheckCircleOutline as SuccessIcon,
 } from '@mui/icons-material';
 import { useGetBillsQuery, useCreateBillMutation, useUpdateBillPaymentMutation } from '../api/billingApi';
 import { useGetCustomersQuery } from '../api/customerApi';
 import { useGetInventoryQuery } from '../api/inventoryApi';
+import { downloadBillPdf, openBillPdf } from '../utils/pdfUtils';
 
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
@@ -20,56 +23,93 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
   if (!bill) return null;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        Bill {bill.billNumber} Details
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          {/* TM Short Name Logo Emblem */}
+          <Box sx={{
+            width: 42, height: 42, borderRadius: '10px',
+            background: 'linear-gradient(135deg, #4F46E5, #0EA5E9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontWeight: 900, fontSize: '1.25rem', letterSpacing: 1,
+            boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)',
+          }}>
+            TM
+          </Box>
+          <Box>
+            <Typography variant="h6" fontWeight={800} color="text.primary">TM Mobiles Bill</Typography>
+            <Typography variant="caption" color="text.secondary">Bill #{bill.billNumber} • Invoice</Typography>
+          </Box>
+        </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
       </DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={1.5} sx={{ mb: 3 }}>
-          <Typography variant="body2"><strong>Shop Name:</strong> {bill.customer?.shopName || 'Unknown'}</Typography>
-          <Typography variant="body2"><strong>Owner Name:</strong> {bill.customer?.ownerName || '-'}</Typography>
-          <Typography variant="body2"><strong>Phone:</strong> {bill.customer?.phone || '-'}</Typography>
-          <Typography variant="body2"><strong>Date:</strong> {new Date(bill.createdAt).toLocaleString('en-IN')}</Typography>
-        </Stack>
 
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Items</Typography>
-        <Table size="small" sx={{ mb: 2 }}>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
-              <TableCell align="center" sx={{ fontWeight: 700 }}>Qty</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>Price</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>Taxable</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>GST</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {bill.items.map((item, idx) => (
-              <TableRow key={idx}>
-                <TableCell>{item.name}</TableCell>
-                <TableCell align="center">{item.quantity}</TableCell>
-                <TableCell align="right">{formatCurrency(item.sellingPrice)}</TableCell>
-                <TableCell align="right">{formatCurrency(item.taxableAmount)}</TableCell>
-                <TableCell align="right">{formatCurrency(item.gstAmount)} ({item.gstRate}%)</TableCell>
-                <TableCell align="right">{formatCurrency(item.total)}</TableCell>
+      <DialogContent dividers>
+        <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2, bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F8FAFC' }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="caption" color="text.secondary" fontWeight={700}>BILLED TO:</Typography>
+              <Typography variant="subtitle1" fontWeight={800} color="primary.main">{bill.customer?.shopName || 'Unknown'}</Typography>
+              <Typography variant="body2"><strong>Phone:</strong> {bill.customer?.phone || '-'}</Typography>
+              <Typography variant="body2"><strong>GSTIN:</strong> {bill.customer?.gstNumber || 'N/A'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6} sx={{ textAlign: { sm: 'right' } }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={700}>INVOICE DETAILS:</Typography>
+              <Typography variant="body2"><strong>Date:</strong> {new Date(bill.createdAt).toLocaleString('en-IN')}</Typography>
+            </Grid>
+          </Grid>
+        </Paper>
+
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Itemized List</Typography>
+        <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#1E293B' }}>
+                <TableCell sx={{ color: '#fff', fontWeight: 700 }}>#</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700 }}>Product / Mobile Model</TableCell>
+                <TableCell align="center" sx={{ color: '#fff', fontWeight: 700 }}>Qty</TableCell>
+                <TableCell align="right" sx={{ color: '#fff', fontWeight: 700 }}>Price Per Unit</TableCell>
+                <TableCell align="right" sx={{ color: '#fff', fontWeight: 700 }}>GST</TableCell>
+                <TableCell align="right" sx={{ color: '#fff', fontWeight: 700 }}>Total Amount</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {bill.items.map((item, idx) => (
+                <TableRow key={idx} hover>
+                  <TableCell>{idx + 1}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{item.name}</TableCell>
+                  <TableCell align="center">{item.quantity}</TableCell>
+                  <TableCell align="right">{formatCurrency(item.sellingPrice)}</TableCell>
+                  <TableCell align="right">{formatCurrency(item.gstAmount)} ({item.gstRate}%)</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(item.total)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
 
         <Divider sx={{ my: 2 }} />
 
         <Stack spacing={1} sx={{ alignItems: 'flex-end' }}>
           <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(bill.subtotal)}</strong></Typography>
           <Typography variant="body2" color="text.secondary">GST Amount: <strong>{formatCurrency(bill.gstAmount)}</strong></Typography>
-          {bill.discount > 0 && <Typography variant="body2" color="text.secondary">Discount: <strong>{formatCurrency(bill.discount)}</strong></Typography>}
-          <Typography variant="subtitle1" fontWeight={800} color="primary.main">Final Total: {formatCurrency(bill.finalAmount)}</Typography>
+          {bill.discount > 0 && <Typography variant="body2" color="text.secondary">Discount: <strong>- {formatCurrency(bill.discount)}</strong></Typography>}
+          <Paper elevation={0} sx={{ p: 1.5, px: 3, bgcolor: 'primary.main', color: '#fff', borderRadius: 2, mt: 1 }}>
+            <Typography variant="subtitle1" fontWeight={800}>Grand Total: {formatCurrency(bill.finalAmount)}</Typography>
+          </Paper>
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} variant="contained">Close</Button>
+      
+      <DialogActions sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Button startIcon={<ViewIcon />} variant="outlined" color="info" onClick={() => openBillPdf(bill._id)}>
+            Open PDF
+          </Button>
+          <Button startIcon={<DownloadIcon />} variant="contained" color="primary" onClick={() => downloadBillPdf(bill._id, bill.billNumber)}>
+            Download PDF Bill
+          </Button>
+        </Box>
+        <Button onClick={onClose} variant="outlined">Close</Button>
       </DialogActions>
     </Dialog>
   );
@@ -83,6 +123,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [items, setItems] = useState([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
+  const [createdBill, setCreatedBill] = useState(null);
 
   const addItem = () => setItems([...items, { productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
   const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
@@ -131,12 +172,19 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
       })),
     };
     try {
-      await createBill(payload).unwrap();
+      const res = await createBill(payload).unwrap();
+      const newBill = res.data;
+      setCreatedBill(newBill);
+      
+      // Auto-trigger PDF download for instant experience
+      if (newBill && newBill._id) {
+        downloadBillPdf(newBill._id, newBill.billNumber);
+      }
+
       setCustomerId('');
       setDiscount(0);
       setItems([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
       setErrorMsg('');
-      onComplete();
     } catch (err) {
       setErrorMsg(err?.data?.message || 'Failed to generate bill');
     }
@@ -189,7 +237,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
               />
             </Grid>
             <Grid item xs={2.5}>
-              <TextField label="Selling Price ₹ *" type="number" value={item.sellingPrice} onChange={(e) => updateItem(i, 'sellingPrice', e.target.value)} fullWidth size="small" />
+              <TextField label="Price Per Unit ₹ *" type="number" value={item.sellingPrice} onChange={(e) => updateItem(i, 'sellingPrice', e.target.value)} fullWidth size="small" />
             </Grid>
             <Grid item xs={1.5}>
               <TextField
@@ -218,9 +266,67 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button variant="contained" size="large" onClick={handleSubmit} disabled={isLoading || !customerId || items.every(i => !i.productId)}>
-          {isLoading ? 'Creating Bill...' : 'Create Sales Bill'}
+          {isLoading ? 'Generating Bill & PDF...' : 'Create Sales Bill & Generate PDF'}
         </Button>
       </Box>
+
+      {/* Bill Creation Success & PDF Dialog */}
+      {createdBill && (
+        <Dialog open={Boolean(createdBill)} onClose={() => setCreatedBill(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ textAlign: 'center', pt: 3 }}>
+            <Box sx={{
+              width: 54, height: 54, borderRadius: '50%', bgcolor: 'success.light',
+              color: 'success.main', mx: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1
+            }}>
+              <SuccessIcon sx={{ fontSize: 36 }} />
+            </Box>
+            <Typography variant="h6" fontWeight={800}>Bill Generated Successfully!</Typography>
+            <Typography variant="body2" color="text.secondary">PDF Bill created with TM design</Typography>
+          </DialogTitle>
+
+          <DialogContent textalign="center" sx={{ textAlign: 'center', pb: 2 }}>
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F8FAFC', borderRadius: 2, mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
+                <Box sx={{ px: 1, py: 0.2, bgcolor: '#4F46E5', color: '#fff', fontWeight: 900, borderRadius: 1, fontSize: '0.8rem' }}>
+                  TM
+                </Box>
+                <Typography variant="subtitle1" fontWeight={800}>{createdBill.billNumber}</Typography>
+              </Box>
+              <Typography variant="body2"><strong>Shop:</strong> {createdBill.customer?.shopName || 'Retail Customer'}</Typography>
+              <Typography variant="subtitle2" color="primary.main" fontWeight={800} sx={{ mt: 0.5 }}>
+                Total: {formatCurrency(createdBill.finalAmount)}
+              </Typography>
+            </Paper>
+            <Alert severity="info" icon={<PdfIcon />} sx={{ textalign: 'left', fontSize: '0.8rem' }}>
+              Your PDF bill download has been initiated automatically.
+            </Alert>
+          </DialogContent>
+
+          <DialogActions sx={{ p: 2.5, flexDirection: 'column', gap: 1 }}>
+            <Button
+              fullWidth variant="contained" color="primary" startIcon={<DownloadIcon />}
+              onClick={() => downloadBillPdf(createdBill._id, createdBill.billNumber)}
+            >
+              Download PDF Bill Again
+            </Button>
+            <Button
+              fullWidth variant="outlined" color="info" startIcon={<ViewIcon />}
+              onClick={() => openBillPdf(createdBill._id)}
+            >
+              View PDF in Browser
+            </Button>
+            <Button
+              fullWidth variant="text" color="inherit"
+              onClick={() => {
+                setCreatedBill(null);
+                onComplete();
+              }}
+            >
+              Go to Bills History
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Card>
   );
 };
@@ -257,7 +363,7 @@ const Billing = () => {
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
           <Typography variant="h4" fontWeight={800}>Billing</Typography>
-          <Typography variant="body2" color="text.secondary">Generate sales bills for retail stores and track collections.</Typography>
+          <Typography variant="body2" color="text.secondary">Generate sales bills with TM PDF branding and track collections.</Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box sx={{
@@ -321,12 +427,20 @@ const Billing = () => {
                           <Chip label={b.status} size="small" color={b.status === 'Paid' ? 'success' : 'warning'} sx={{ fontWeight: 700 }} />
                         </TableCell>
                         <TableCell>
-                          <Button size="small" onClick={() => setSelectedBill(b)} sx={{ mr: 1 }}>View</Button>
-                          {b.status === 'Pending' && (
-                            <Button size="small" startIcon={<CheckCircleIcon />} color="success" variant="outlined" onClick={() => handleMarkAsPaid(b)}>
-                              Mark Paid
-                            </Button>
-                          )}
+                          <Stack direction="row" spacing={1}>
+                            <Button size="small" variant="outlined" onClick={() => setSelectedBill(b)}>View</Button>
+                            <IconButton
+                              size="small" color="primary" title="Download PDF Bill"
+                              onClick={() => downloadBillPdf(b._id, b.billNumber)}
+                            >
+                              <PdfIcon fontSize="small" />
+                            </IconButton>
+                            {b.status === 'Pending' && (
+                              <Button size="small" startIcon={<CheckCircleIcon />} color="success" variant="outlined" onClick={() => handleMarkAsPaid(b)}>
+                                Mark Paid
+                              </Button>
+                            )}
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     ))

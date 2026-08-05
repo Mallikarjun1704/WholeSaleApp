@@ -7,6 +7,7 @@ import {
 import {
   Search as SearchIcon, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
   KeyboardArrowDown, KeyboardArrowUp, People as CustomerIcon, Close as CloseIcon,
+  PictureAsPdf as PdfIcon, Download as DownloadIcon, Visibility as ViewIcon,
 } from '@mui/icons-material';
 import {
   useGetCustomersQuery,
@@ -15,6 +16,7 @@ import {
   useDeleteCustomerMutation,
 } from '../api/customerApi';
 import { useGetBillsByCustomerQuery, useUpdateBillPaymentMutation } from '../api/billingApi';
+import { downloadBillPdf, openBillPdf } from '../utils/pdfUtils';
 
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
@@ -52,7 +54,16 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        Bill Details: {bill.billNumber}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box sx={{
+            px: 1.2, py: 0.4, borderRadius: '8px',
+            bgcolor: 'primary.main', color: '#fff', fontWeight: 900, fontSize: '1rem',
+            letterSpacing: 1
+          }}>
+            TM
+          </Box>
+          <Typography variant="h6" fontWeight={800}>Bill Details: {bill.billNumber}</Typography>
+        </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent dividers>
@@ -87,8 +98,16 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
           <Typography variant="subtitle1" fontWeight={800} color="primary.main">Final Total: {formatCurrency(bill.finalAmount)}</Typography>
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} variant="contained">Close</Button>
+      <DialogActions sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button size="small" startIcon={<ViewIcon />} variant="outlined" color="info" onClick={() => openBillPdf(bill._id)}>
+            Open PDF
+          </Button>
+          <Button size="small" startIcon={<DownloadIcon />} variant="contained" color="primary" onClick={() => downloadBillPdf(bill._id, bill.billNumber)}>
+            Download PDF
+          </Button>
+        </Box>
+        <Button onClick={onClose} variant="outlined">Close</Button>
       </DialogActions>
     </Dialog>
   );
@@ -175,7 +194,12 @@ const CustomerRow = ({ customer, onEdit, onDelete }) => {
                           />
                         </TableCell>
                         <TableCell>
-                          <Button size="small" onClick={() => setSelectedBill(b)}>View Details</Button>
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            <Button size="small" onClick={() => setSelectedBill(b)}>View</Button>
+                            <IconButton size="small" color="primary" title="Download PDF" onClick={() => downloadBillPdf(b._id, b.billNumber)}>
+                              <PdfIcon fontSize="small" />
+                            </IconButton>
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     ))}

@@ -2,7 +2,9 @@ const Bill = require('../models/Bill');
 const Product = require('../models/Product');
 const Batch = require('../models/Batch');
 const Customer = require('../models/Customer');
+const Setting = require('../models/Setting');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { generateBillPdfStream } = require('../utils/pdfGenerator');
 
 /**
  * Generate a unique bill number
@@ -282,10 +284,35 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Generate and stream PDF bill
+ * @route   GET /api/billing/:id/pdf
+ * @access  Private
+ */
+const getBillPdf = asyncHandler(async (req, res) => {
+  const bill = await Bill.findById(req.params.id)
+    .populate('customer', 'shopName ownerName phone address gstNumber')
+    .populate('items.product', 'name sku brand category');
+
+  if (!bill) {
+    return res.status(404).json({ success: false, message: 'Bill not found' });
+  }
+
+  const settings = await Setting.getSettings();
+  const pdfStream = generateBillPdfStream(bill, settings);
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="Bill_${bill.billNumber}.pdf"`);
+
+  pdfStream.pipe(res);
+  pdfStream.end();
+});
+
 module.exports = {
   createBill,
   getBills,
   getBillById,
   getBillsByCustomer,
   updateBillPaymentStatus,
+  getBillPdf,
 };

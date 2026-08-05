@@ -7,6 +7,7 @@ const {
   getBillById,
   getBillsByCustomer,
   updateBillPaymentStatus,
+  getBillPdf,
 } = require('../controllers/billingController');
 
 // All billing routes require authentication
@@ -16,6 +17,7 @@ router.post('/', createBill);
 router.get('/', getBills);
 router.get('/customer/:customerId', getBillsByCustomer);
 router.get('/:id', getBillById);
+router.get('/:id/pdf', getBillPdf);
 router.patch('/:id/payment', authorize('admin'), updateBillPaymentStatus);
 
 module.exports = router;
