@@ -19,6 +19,7 @@ const billingRoutes = require('./routes/billingRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
 const investmentRoutes = require('./routes/investmentRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
+const wholesalerRoutes = require('./routes/wholesalerRoutes');
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/investments', investmentRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/wholesaler', wholesalerRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

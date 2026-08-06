@@ -22,6 +22,7 @@ import Customers from './pages/Customers';
 import Suppliers from './pages/Suppliers';
 import Investments from './pages/Investments';
 import Expenses from './pages/Expenses';
+import WholesalerComparisonModule from './pages/WholesalerComparisonModule';
 import Unauthorized from './pages/Unauthorized';
 
 const App = () => {
@@ -94,6 +95,9 @@ const App = () => {
 
             {/* Billing */}
             <Route path="/billing" element={<Billing />} />
+
+            {/* Wholesaler Price Comparison */}
+            <Route path="/wholesaler" element={<WholesalerComparisonModule />} />
 
             {/* Customers */}
             <Route path="/customers" element={<Customers />} />

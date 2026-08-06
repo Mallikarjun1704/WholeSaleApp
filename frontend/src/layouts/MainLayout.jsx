@@ -38,6 +38,7 @@ import {
   Notifications as NotificationsIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
+  Compare as CompareIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
   Search as SearchIcon,
@@ -86,8 +87,7 @@ const MainLayout = () => {
     { text: 'Suppliers', icon: <SupplierIcon />, path: '/suppliers' },
     { text: 'Investments', icon: <CapitalIcon />, path: '/investments' },
     { text: 'Expenses', icon: <ExpenseIcon />, path: '/expenses' },
-    { text: 'Credits', icon: <CreditIcon />, path: '/credits' },
-    { text: 'Reports', icon: <ReportsIcon />, path: '/reports', adminOnly: true },
+    { text: 'Price Comparison', icon: <CompareIcon />, path: '/wholesaler' },
   ];
 
   const settingsItems = [
@@ -205,67 +205,6 @@ const MainLayout = () => {
             );
           })}
 
-          {/* Settings (Admin only) */}
-          {isAdmin && (
-            <>
-              <ListItem disablePadding sx={{ display: 'block' }}>
-                <Tooltip title={!sidebarOpen ? 'Settings' : ''} placement="right" arrow>
-                  <ListItemButton
-                    onClick={() => {
-                      if (sidebarOpen) {
-                        setSettingsOpen(!settingsOpen);
-                      } else {
-                        navigate('/settings/shop');
-                      }
-                    }}
-                    sx={{
-                      minHeight: 44,
-                      justifyContent: sidebarOpen ? 'initial' : 'center',
-                      px: 2,
-                    }}
-                  >
-                    <ListItemIcon
-                      sx={{
-                        minWidth: 0,
-                        mr: sidebarOpen ? 2 : 'auto',
-                        justifyContent: 'center',
-                        color: location.pathname.startsWith('/settings')
-                          ? 'primary.main'
-                          : 'text.secondary',
-                      }}
-                    >
-                      <SettingsIcon />
-                    </ListItemIcon>
-                    {sidebarOpen && (
-                      <>
-                        <ListItemText primary="Settings" />
-                        {settingsOpen ? <ExpandLess /> : <ExpandMore />}
-                      </>
-                    )}
-                  </ListItemButton>
-                </Tooltip>
-              </ListItem>
-              {sidebarOpen && (
-                <Collapse in={settingsOpen} timeout="auto" unmountOnExit>
-                  <List component="div" disablePadding>
-                    {settingsItems.map((item) => (
-                      <ListItemButton
-                        key={item.text}
-                        selected={location.pathname === item.path}
-                        onClick={() => navigate(item.path)}
-                        sx={{ pl: 6, py: 0.75, minHeight: 36 }}
-                      >
-                        <ListItemText
-                          primary={item.text}
-                          primaryTypographyProps={{ fontSize: '0.85rem' }}
-                        />
-                      </ListItemButton>
-                    ))}
-                  </List>
-                </Collapse>
-              )}
-            </>
-          )}
         </List>
 
         {/* User Card at bottom */}

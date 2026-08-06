@@ -70,6 +70,9 @@ export const apiSlice = createApi({
     'Users',
     'Notifications',
     'ActivityLogs',
+    'WholesalerSellers',
+    'WholesalerPrices',
+    'WholesalerNormalizations',
   ],
   endpoints: () => ({}),
 });
