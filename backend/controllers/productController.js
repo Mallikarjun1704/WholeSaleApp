@@ -168,7 +168,7 @@ const createProduct = asyncHandler(async (req, res) => {
     brand: brandId,
     purchasePrice: Number(purchasePrice) || 0,
     sellingPrice: Number(sellingPrice) || 0,
-    gstRate: Number(gstRate) || 18,
+    gstRate: gstRate !== undefined ? Number(gstRate) : 0,
     stock: finalStock,
     lowStockThreshold: Number(lowStockThreshold) || 5,
     imeiTracking: !!imeiTracking,
@@ -239,7 +239,7 @@ const updateProduct = asyncHandler(async (req, res) => {
   if (brand) product.brand = brand;
   if (purchasePrice !== undefined) product.purchasePrice = Number(purchasePrice) || 0;
   if (sellingPrice !== undefined) product.sellingPrice = Number(sellingPrice) || 0;
-  if (gstRate !== undefined) product.gstRate = Number(gstRate) || 18;
+  if (gstRate !== undefined) product.gstRate = Number(gstRate) || 0;
   if (lowStockThreshold !== undefined) product.lowStockThreshold = Number(lowStockThreshold) || 5;
   if (warrantyMonths !== undefined) product.warrantyMonths = Number(warrantyMonths) || 12;
   if (isActive !== undefined) product.isActive = !!isActive;

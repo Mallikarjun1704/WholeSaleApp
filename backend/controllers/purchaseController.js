@@ -29,6 +29,40 @@ const generateBatchId = async () => {
 };
 
 /**
+ * Generate a unique purchase invoice number
+ */
+const generateInvoiceNumber = async () => {
+  const today = new Date();
+  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  let count = await Purchase.countDocuments();
+  let unique = false;
+  let invNum = '';
+
+  while (!unique) {
+    count++;
+    invNum = `INV-${dateStr}-${String(count).padStart(3, '0')}`;
+    const exists = await Purchase.findOne({ invoiceNumber: invNum });
+    if (!exists) {
+      unique = true;
+    }
+  }
+  return invNum;
+};
+
+/**
+ * @desc    Get next available auto-generated invoice number
+ * @route   GET /api/purchases/next-invoice
+ * @access  Private
+ */
+const getNextInvoiceNumber = asyncHandler(async (req, res) => {
+  const invoiceNumber = await generateInvoiceNumber();
+  res.status(200).json({
+    success: true,
+    data: { invoiceNumber },
+  });
+});
+
+/**
  * @desc    Create a purchase bill (supplier stock receipt)
  * @route   POST /api/purchases
  * @access  Private/Admin
@@ -41,6 +75,8 @@ const createPurchase = asyncHandler(async (req, res) => {
     commissionPercent,
     travelCharge,
     notes,
+    purchaseDate,
+    paidAmount,
   } = req.body;
 
   // Validate supplier
@@ -52,8 +88,9 @@ const createPurchase = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Supplier not found' });
   }
 
-  if (!invoiceNumber) {
-    return res.status(400).json({ success: false, message: 'Invoice number is required' });
+  let finalInvoiceNumber = invoiceNumber ? invoiceNumber.trim() : '';
+  if (!finalInvoiceNumber) {
+    finalInvoiceNumber = await generateInvoiceNumber();
   }
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -107,12 +144,21 @@ const createPurchase = asyncHandler(async (req, res) => {
   const travel = Math.max(0, Number(travelCharge) || 0);
   const totalAmount = subtotal + commAmount + travel;
 
+  // Calculate initial paid amount & status
+  const initialPaid = Math.min(totalAmount, Math.max(0, Number(paidAmount) || 0));
+  let status = 'Unpaid';
+  if (initialPaid >= totalAmount) {
+    status = 'Paid';
+  } else if (initialPaid > 0) {
+    status = 'Partially Paid';
+  }
+
   // Generate batch ID
   const batchId = await generateBatchId();
 
   // Create the purchase record
   const purchase = await Purchase.create({
-    invoiceNumber: invoiceNumber.trim(),
+    invoiceNumber: finalInvoiceNumber,
     batchId,
     supplier: supplier._id,
     items: processedItems,
@@ -121,7 +167,10 @@ const createPurchase = asyncHandler(async (req, res) => {
     commissionAmount: commAmount,
     travelCharge: travel,
     totalAmount,
-    paymentStatus: 'Unpaid',
+    paidAmount: initialPaid,
+    paymentStatus: status,
+    purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
+    paidDate: status === 'Paid' ? new Date() : null,
     notes: notes || '',
   });
 
@@ -149,10 +198,13 @@ const createPurchase = asyncHandler(async (req, res) => {
     });
   }
 
-  // Update supplier pending credit
-  await Supplier.findByIdAndUpdate(supplier._id, {
-    $inc: { pendingCredit: totalAmount },
-  });
+  // Update supplier pending credit (remaining balance)
+  const remainingDebt = Math.max(0, totalAmount - initialPaid);
+  if (remainingDebt > 0) {
+    await Supplier.findByIdAndUpdate(supplier._id, {
+      $inc: { pendingCredit: remainingDebt },
+    });
+  }
 
   // Populate and return
   const populatedPurchase = await Purchase.findById(purchase._id)
@@ -203,12 +255,12 @@ const getPurchaseById = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Update purchase bill payment status
+ * @desc    Update purchase bill payment status (Support partial payments)
  * @route   PATCH /api/purchases/:id/payment
  * @access  Private/Admin
  */
 const updatePurchasePaymentStatus = asyncHandler(async (req, res) => {
-  const { paymentStatus } = req.body;
+  const { paymentStatus, amount } = req.body;
 
   // Only master / admin can update payment status
   if (req.user?.role !== 'admin') {
@@ -224,30 +276,50 @@ const updatePurchasePaymentStatus = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Purchase not found' });
   }
 
-  // Once Paid, status cannot be reverted back to Unpaid
   if (purchase.paymentStatus === 'Paid') {
     return res.status(400).json({
       success: false,
-      message: 'Once marked as Paid, the bill status cannot be changed back to Unpaid.',
+      message: 'Once marked as Paid, the bill status cannot be changed.',
     });
   }
 
-  if (paymentStatus !== 'Paid') {
-    return res.status(400).json({ success: false, message: 'Status can only be updated to Paid' });
+  let payAmount = 0;
+  const currentPaid = purchase.paidAmount || 0;
+  const remaining = Math.max(0, purchase.totalAmount - currentPaid);
+
+  if (amount !== undefined && amount !== null && !isNaN(Number(amount))) {
+    payAmount = Math.min(remaining, Math.max(0, Number(amount)));
+  } else if (paymentStatus === 'Paid') {
+    payAmount = remaining;
   }
 
-  purchase.paymentStatus = 'Paid';
-  purchase.paidDate = new Date();
+  const newPaidAmount = currentPaid + payAmount;
+  let newStatus = 'Unpaid';
+  if (newPaidAmount >= purchase.totalAmount) {
+    newStatus = 'Paid';
+    purchase.paidDate = new Date();
+  } else if (newPaidAmount > 0) {
+    newStatus = 'Partially Paid';
+  }
+
+  purchase.paidAmount = newPaidAmount;
+  purchase.paymentStatus = newStatus;
   await purchase.save();
 
-  // Update supplier pending credit
-  await Supplier.findByIdAndUpdate(purchase.supplier, {
-    $inc: { pendingCredit: -purchase.totalAmount },
-  });
+  // Deduct paid amount from supplier pending credit
+  if (payAmount > 0) {
+    await Supplier.findByIdAndUpdate(purchase.supplier, {
+      $inc: { pendingCredit: -payAmount },
+    });
+  }
+
+  const updatedPurchase = await Purchase.findById(purchase._id)
+    .populate('supplier', 'name phone')
+    .populate('items.product', 'name sku');
 
   res.status(200).json({
     success: true,
-    data: purchase,
+    data: updatedPurchase,
   });
 });
 
@@ -281,4 +353,5 @@ module.exports = {
   getPurchasesBySupplier,
   getPurchaseById,
   updatePurchasePaymentStatus,
+  getNextInvoiceNumber,
 };

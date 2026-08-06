@@ -7,6 +7,7 @@ const {
   getPurchasesBySupplier,
   getPurchaseById,
   updatePurchasePaymentStatus,
+  getNextInvoiceNumber,
 } = require('../controllers/purchaseController');
 
 // All purchase routes require authentication
@@ -15,6 +16,7 @@ router.use(authenticate);
 // Admin-only write operations, but staff can view
 router.post('/', authorize('admin'), createPurchase);
 router.get('/', getPurchases);
+router.get('/next-invoice', getNextInvoiceNumber);
 router.get('/supplier/:supplierId', getPurchasesBySupplier);
 router.get('/:id', getPurchaseById);
 router.patch('/:id/payment', authorize('admin'), updatePurchasePaymentStatus);

@@ -13,7 +13,6 @@ import {
   useGetCustomersQuery,
   useCreateCustomerMutation,
   useUpdateCustomerMutation,
-  useDeleteCustomerMutation,
 } from '../api/customerApi';
 import { useGetBillsByCustomerQuery, useUpdateBillPaymentMutation } from '../api/billingApi';
 import { downloadBillPdf, openBillPdf } from '../utils/pdfUtils';
@@ -113,24 +112,66 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
   );
 };
 
+// ========== Record Partial / Full Payment Dialog ==========
+const RecordPaymentDialog = ({ open, onClose, billNumber, totalAmount, paidAmount, onSave, isLoading }) => {
+  const remaining = Math.max(0, (totalAmount || 0) - (paidAmount || 0));
+  const [payAmount, setPayAmount] = useState(remaining);
+
+  React.useEffect(() => {
+    setPayAmount(remaining);
+  }, [open, remaining]);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>Record Payment: #{billNumber}</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <Box sx={{ p: 1.5, bgcolor: 'grey.100', borderRadius: 1.5 }}>
+            <Typography variant="body2" color="text.secondary">Total Amount: <strong>{formatCurrency(totalAmount)}</strong></Typography>
+            <Typography variant="body2" color="text.secondary">Paid So Far: <strong>{formatCurrency(paidAmount)}</strong></Typography>
+            <Typography variant="subtitle2" color="error.main" fontWeight={800} sx={{ mt: 0.5 }}>
+              Remaining to Pay: {formatCurrency(remaining)}
+            </Typography>
+          </Box>
+          <TextField
+            label="Payment Amount ₹ *"
+            type="number"
+            value={payAmount}
+            onChange={(e) => setPayAmount(e.target.value)}
+            fullWidth
+            size="small"
+            inputProps={{ min: 1, max: remaining }}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 1.5 }}>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={() => onSave(Number(payAmount))}
+          disabled={isLoading || !payAmount || Number(payAmount) <= 0}
+        >
+          {isLoading ? 'Saving...' : 'Submit Payment'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 // ========== Customer Row with Bills ==========
-const CustomerRow = ({ customer, onEdit, onDelete }) => {
+const CustomerRow = ({ customer, onEdit }) => {
   const [open, setOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
+  const [paymentBill, setPaymentBill] = useState(null);
   const { data: billsData } = useGetBillsByCustomerQuery(customer._id, { skip: !open });
-  const [updateBillPayment] = useUpdateBillPaymentMutation();
+  const [updateBillPayment, { isLoading: isUpdatingPayment }] = useUpdateBillPaymentMutation();
   const bills = billsData?.data || [];
 
-  const handlePaymentToggle = async (bill) => {
-    const newStatus = bill.status === 'Paid' ? 'Pending' : 'Paid';
-    if (newStatus === 'Paid') {
-      const confirm1 = window.confirm(`Confirm payment collection for Bill #${bill.billNumber}? Total: ₹${bill.finalAmount}`);
-      if (!confirm1) return;
-      const confirm2 = window.confirm(`Are you SURE you want to mark this bill as PAID? This will clear retail store pending balance.`);
-      if (!confirm2) return;
-    }
+  const handleRecordPayment = async (amount) => {
+    if (!paymentBill) return;
     try {
-      await updateBillPayment({ id: bill._id, status: newStatus }).unwrap();
+      await updateBillPayment({ id: paymentBill._id, amount }).unwrap();
+      setPaymentBill(null);
     } catch (err) {
       alert(err?.data?.message || 'Failed to update payment status');
     }
@@ -155,7 +196,6 @@ const CustomerRow = ({ customer, onEdit, onDelete }) => {
         </TableCell>
         <TableCell>
           <IconButton size="small" onClick={() => onEdit(customer)}><EditIcon fontSize="small" /></IconButton>
-          <IconButton size="small" onClick={() => onDelete(customer._id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
         </TableCell>
       </TableRow>
       <TableRow>
@@ -172,37 +212,49 @@ const CustomerRow = ({ customer, onEdit, onDelete }) => {
                       <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Bill#</TableCell>
                       <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Date</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Items</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Total Amount</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Payment Status</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Total</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Paid</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Remaining</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Status</TableCell>
                       <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {bills.map((b) => (
-                      <TableRow key={b._id} hover>
-                        <TableCell sx={{ fontSize: '0.8rem' }}>{b.billNumber}</TableCell>
-                        <TableCell sx={{ fontSize: '0.8rem' }}>{new Date(b.createdAt).toLocaleDateString('en-IN')}</TableCell>
-                        <TableCell align="center" sx={{ fontSize: '0.8rem' }}>{b.items?.length || 0}</TableCell>
-                        <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatCurrency(b.finalAmount)}</TableCell>
-                        <TableCell align="center">
-                          <Chip
-                            label={b.status}
-                            size="small"
-                            color={b.status === 'Paid' ? 'success' : 'warning'}
-                            onClick={() => handlePaymentToggle(b)}
-                            sx={{ fontWeight: 700, cursor: 'pointer', minWidth: 70 }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Stack direction="row" spacing={0.5} alignItems="center">
-                            <Button size="small" onClick={() => setSelectedBill(b)}>View</Button>
-                            <IconButton size="small" color="primary" title="Download PDF" onClick={() => downloadBillPdf(b._id, b.billNumber)}>
-                              <PdfIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {bills.map((b) => {
+                      const paid = b.paidAmount || 0;
+                      const remaining = Math.max(0, b.finalAmount - paid);
+                      const isPaid = b.status === 'Paid';
+                      const isPartial = b.status === 'Partially Paid';
+                      return (
+                        <TableRow key={b._id} hover>
+                          <TableCell sx={{ fontSize: '0.8rem' }}>{b.billNumber}</TableCell>
+                          <TableCell sx={{ fontSize: '0.8rem' }}>{new Date(b.billDate || b.createdAt).toLocaleDateString('en-IN')}</TableCell>
+                          <TableCell align="center" sx={{ fontSize: '0.8rem' }}>{b.items?.length || 0}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatCurrency(b.finalAmount)}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem', color: 'success.main' }}>{formatCurrency(paid)}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700, color: remaining > 0 ? 'error.main' : 'text.secondary' }}>
+                            {formatCurrency(remaining)}
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={b.status}
+                              size="small"
+                              color={isPaid ? 'success' : isPartial ? 'warning' : 'error'}
+                              onClick={() => !isPaid && setPaymentBill(b)}
+                              sx={{ fontWeight: 700, cursor: isPaid ? 'default' : 'pointer', minWidth: 70 }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                              <Button size="small" onClick={() => setSelectedBill(b)}>View</Button>
+                              <IconButton size="small" color="primary" title="Download PDF" onClick={() => downloadBillPdf(b._id, b.billNumber)}>
+                                <PdfIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               ) : (
@@ -218,6 +270,18 @@ const CustomerRow = ({ customer, onEdit, onDelete }) => {
       {selectedBill && (
         <BillDetailsDialog open={Boolean(selectedBill)} onClose={() => setSelectedBill(null)} bill={selectedBill} />
       )}
+
+      {paymentBill && (
+        <RecordPaymentDialog
+          open={Boolean(paymentBill)}
+          onClose={() => setPaymentBill(null)}
+          billNumber={paymentBill.billNumber}
+          totalAmount={paymentBill.finalAmount}
+          paidAmount={paymentBill.paidAmount}
+          onSave={handleRecordPayment}
+          isLoading={isUpdatingPayment}
+        />
+      )}
     </>
   );
 };
@@ -230,7 +294,6 @@ const Customers = () => {
   const { data, isLoading } = useGetCustomersQuery(search);
   const [createCustomer] = useCreateCustomerMutation();
   const [updateCustomer] = useUpdateCustomerMutation();
-  const [deleteCustomer] = useDeleteCustomerMutation();
 
   const customers = data?.data || [];
 
@@ -251,15 +314,6 @@ const Customers = () => {
   const handleEdit = (customer) => {
     setEditingCustomer(customer);
     setFormOpen(true);
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this customer?')) return;
-    try {
-      await deleteCustomer(id).unwrap();
-    } catch (err) {
-      alert(err?.data?.message || 'Failed to delete customer');
-    }
   };
 
   return (
@@ -304,7 +358,7 @@ const Customers = () => {
                   <TableRow key={i}>{Array.from({ length: 9 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
                 ))
               ) : customers.length > 0 ? (
-                customers.map((c) => <CustomerRow key={c._id} customer={c} onEdit={handleEdit} onDelete={handleDelete} />)
+                customers.map((c) => <CustomerRow key={c._id} customer={c} onEdit={handleEdit} />)
               ) : (
                 <TableRow>
                   <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>

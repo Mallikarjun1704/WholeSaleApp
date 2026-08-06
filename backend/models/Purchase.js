@@ -74,9 +74,18 @@ const purchaseSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    purchaseDate: {
+      type: Date,
+      default: Date.now,
+    },
+    paidAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     paymentStatus: {
       type: String,
-      enum: ['Paid', 'Unpaid'],
+      enum: ['Unpaid', 'Partially Paid', 'Paid'],
       default: 'Unpaid',
     },
     paidDate: {

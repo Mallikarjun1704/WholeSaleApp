@@ -43,7 +43,7 @@ const productSchema = new mongoose.Schema(
     gstRate: {
       type: Number,
       required: [true, 'GST rate is required'],
-      default: 18,
+      default: 0,
     },
     stock: {
       type: Number,

@@ -19,6 +19,9 @@ export const purchaseApi = apiSlice.injectEndpoints({
       query: (id) => `/purchases/${id}`,
       providesTags: (result, error, id) => [{ type: 'Purchases', id }],
     }),
+    getNextInvoiceNumber: builder.query({
+      query: () => '/purchases/next-invoice',
+    }),
     createPurchase: builder.mutation({
       query: (data) => ({
         url: '/purchases',
@@ -28,10 +31,10 @@ export const purchaseApi = apiSlice.injectEndpoints({
       invalidatesTags: ['Purchases', 'Suppliers', 'Products', 'Batches', 'Dashboard'],
     }),
     updatePurchasePayment: builder.mutation({
-      query: ({ id, paymentStatus }) => ({
+      query: ({ id, paymentStatus, amount }) => ({
         url: `/purchases/${id}/payment`,
         method: 'PATCH',
-        body: { paymentStatus },
+        body: { paymentStatus, amount },
       }),
       invalidatesTags: ['Purchases', 'Suppliers', 'Dashboard'],
     }),
@@ -42,6 +45,8 @@ export const {
   useGetPurchasesQuery,
   useGetPurchasesBySupplierQuery,
   useGetPurchaseByIdQuery,
+  useGetNextInvoiceNumberQuery,
+  useLazyGetNextInvoiceNumberQuery,
   useCreatePurchaseMutation,
   useUpdatePurchasePaymentMutation,
 } = purchaseApi;

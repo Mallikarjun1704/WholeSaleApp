@@ -75,6 +75,15 @@ const billSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    billDate: {
+      type: Date,
+      default: Date.now,
+    },
+    paidAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     paymentMethod: {
       type: String,
       enum: ['Cash', 'Card', 'UPI', 'Credit', 'Mixed'],
@@ -82,7 +91,7 @@ const billSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pending', 'Paid', 'Cancelled'],
+      enum: ['Pending', 'Partially Paid', 'Paid', 'Cancelled'],
       default: 'Pending',
     },
     paidDate: {

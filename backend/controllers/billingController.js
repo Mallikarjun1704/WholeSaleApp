@@ -26,7 +26,7 @@ const generateBillNumber = async () => {
  * @access  Private
  */
 const createBill = asyncHandler(async (req, res) => {
-  const { customerId, items, discount, paymentMethod } = req.body;
+  const { customerId, items, discount, paymentMethod, billDate, paidAmount } = req.body;
 
   // Validate customer
   if (!customerId) {
@@ -108,6 +108,15 @@ const createBill = asyncHandler(async (req, res) => {
   const discountAmount = Number(discount) || 0;
   const finalAmount = subtotal + totalGst - discountAmount;
 
+  // Calculate initial paid amount & status
+  const initialPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
+  let status = 'Pending';
+  if (initialPaid >= finalAmount) {
+    status = 'Paid';
+  } else if (initialPaid > 0) {
+    status = 'Partially Paid';
+  }
+
   // Generate bill number
   const billNumber = await generateBillNumber();
 
@@ -120,8 +129,11 @@ const createBill = asyncHandler(async (req, res) => {
     discount: discountAmount,
     gstAmount: totalGst,
     finalAmount,
+    paidAmount: initialPaid,
     paymentMethod: paymentMethod || 'Cash',
-    status: 'Pending',
+    status,
+    billDate: billDate ? new Date(billDate) : new Date(),
+    paidDate: status === 'Paid' ? new Date() : null,
   });
 
   // Deduct stock from products and batches (FIFO)
@@ -148,10 +160,13 @@ const createBill = asyncHandler(async (req, res) => {
     }
   }
 
-  // Update customer pending credit
-  await Customer.findByIdAndUpdate(customer._id, {
-    $inc: { pendingCredit: finalAmount },
-  });
+  // Update customer pending credit (remaining balance)
+  const remainingDebt = Math.max(0, finalAmount - initialPaid);
+  if (remainingDebt > 0) {
+    await Customer.findByIdAndUpdate(customer._id, {
+      $inc: { pendingCredit: remainingDebt },
+    });
+  }
 
   // Populate and return
   const populatedBill = await Bill.findById(bill._id)
@@ -173,7 +188,7 @@ const getBills = asyncHandler(async (req, res) => {
   const { status, customerId } = req.query;
   const query = {};
 
-  if (status && ['Pending', 'Paid', 'Cancelled'].includes(status)) {
+  if (status && ['Pending', 'Partially Paid', 'Paid', 'Cancelled'].includes(status)) {
     query.status = status;
   }
   if (customerId) {
@@ -232,12 +247,12 @@ const getBillsByCustomer = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Update bill payment status (Mark as Paid)
+ * @desc    Update bill payment status (Support partial payments)
  * @route   PATCH /api/billing/:id/payment
  * @access  Private/Admin
  */
 const updateBillPaymentStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
+  const { status, amount } = req.body;
 
   // Only master / admin can update payment status
   if (req.user?.role !== 'admin') {
@@ -257,22 +272,39 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
   if (bill.status === 'Paid') {
     return res.status(400).json({
       success: false,
-      message: 'Once marked as Paid, the sales bill status cannot be changed back to Pending.',
+      message: 'Once marked as Paid, the sales bill status cannot be changed.',
     });
   }
 
-  if (status !== 'Paid') {
-    return res.status(400).json({ success: false, message: 'Status can only be updated to Paid' });
+  let payAmount = 0;
+  const currentPaid = bill.paidAmount || 0;
+  const remaining = Math.max(0, bill.finalAmount - currentPaid);
+
+  if (amount !== undefined && amount !== null && !isNaN(Number(amount))) {
+    payAmount = Math.min(remaining, Math.max(0, Number(amount)));
+  } else if (status === 'Paid') {
+    payAmount = remaining;
   }
 
-  bill.status = 'Paid';
-  bill.paidDate = new Date();
+  const newPaidAmount = currentPaid + payAmount;
+  let newStatus = 'Pending';
+  if (newPaidAmount >= bill.finalAmount) {
+    newStatus = 'Paid';
+    bill.paidDate = new Date();
+  } else if (newPaidAmount > 0) {
+    newStatus = 'Partially Paid';
+  }
+
+  bill.paidAmount = newPaidAmount;
+  bill.status = newStatus;
   await bill.save();
 
-  // Deduct from customer pending credit when bill is marked Paid
-  await Customer.findByIdAndUpdate(bill.customer, {
-    $inc: { pendingCredit: -bill.finalAmount },
-  });
+  // Deduct actual paid amount from customer pending credit
+  if (payAmount > 0) {
+    await Customer.findByIdAndUpdate(bill.customer, {
+      $inc: { pendingCredit: -payAmount },
+    });
+  }
 
   const updatedBill = await Bill.findById(bill._id)
     .populate('customer', 'shopName ownerName phone')
