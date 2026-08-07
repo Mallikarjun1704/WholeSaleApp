@@ -194,8 +194,9 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
     const price = Number(item.purchasePrice) || 0;
     return sum + qty * price;
   }, 0);
-  const commAmount = Math.round((subtotal * (Number(form.commissionPercent) || 0)) / 100);
-  const totalAmount = subtotal + commAmount + (Number(form.travelCharge) || 0);
+  const travelChargeVal = Number(form.travelCharge) || 0;
+  const commAmount = Math.round(((subtotal + travelChargeVal) * (Number(form.commissionPercent) || 0)) / 100);
+  const totalAmount = subtotal + commAmount + travelChargeVal;
 
   const handleSubmit = async () => {
     setErrorMsg('');

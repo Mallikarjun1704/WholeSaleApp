@@ -140,8 +140,8 @@ const createPurchase = asyncHandler(async (req, res) => {
 
   // Calculate commission and total
   const commPercent = Math.min(100, Math.max(0, Number(commissionPercent) || 0));
-  const commAmount = Math.round((subtotal * commPercent) / 100);
   const travel = Math.max(0, Number(travelCharge) || 0);
+  const commAmount = Math.round(((subtotal + travel) * commPercent) / 100);
   const totalAmount = subtotal + commAmount + travel;
 
   // Calculate initial paid amount & status
