@@ -323,18 +323,34 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
  */
 const getBillPdf = asyncHandler(async (req, res) => {
   const bill = await Bill.findById(req.params.id)
-    .populate('customer', 'shopName ownerName phone address gstNumber')
+    .populate('customer', 'shopName ownerName name phone address gstNumber')
     .populate('items.product', 'name sku brand category');
 
   if (!bill) {
     return res.status(404).json({ success: false, message: 'Bill not found' });
   }
 
+  // Format filename as shopName_date_indexValue.pdf
+  const rawShopName = bill.customer?.shopName || bill.customer?.ownerName || bill.customer?.name || 'Customer';
+  const cleanShopName = rawShopName.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+  const dateObj = bill.billDate ? new Date(bill.billDate) : new Date(bill.createdAt);
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  const dateStr = `${year}${month}${day}`;
+
+  const billNumParts = (bill.billNumber || '').split('-');
+  const indexValue = billNumParts.length > 0 ? billNumParts[billNumParts.length - 1] : '1';
+
+  const pdfFileName = `${cleanShopName}_${dateStr}_${indexValue}.pdf`;
+
   const settings = await Setting.getSettings();
   const pdfStream = generateBillPdfStream(bill, settings);
 
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="Bill_${bill.billNumber}.pdf"`);
+  res.setHeader('Content-Disposition', `inline; filename="${pdfFileName}"`);
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
 
   pdfStream.pipe(res);
   pdfStream.end();

@@ -126,7 +126,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
           <Button startIcon={<ViewIcon />} variant="outlined" color="info" onClick={() => openBillPdf(bill._id)}>
             Open PDF
           </Button>
-          <Button startIcon={<DownloadIcon />} variant="contained" color="primary" onClick={() => downloadBillPdf(bill._id, bill.billNumber)}>
+          <Button startIcon={<DownloadIcon />} variant="contained" color="primary" onClick={() => downloadBillPdf(bill._id, bill)}>
             Download PDF Bill
           </Button>
         </Box>
@@ -438,7 +438,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
       setCreatedBill(newBill);
       
       if (newBill && newBill._id) {
-        downloadBillPdf(newBill._id, newBill.billNumber);
+        downloadBillPdf(newBill._id, newBill);
       }
 
       setCustomerId('');
@@ -569,7 +569,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
           <DialogActions sx={{ p: 2.5, flexDirection: 'column', gap: 1 }}>
             <Button
               fullWidth variant="contained" color="primary" startIcon={<DownloadIcon />}
-              onClick={() => downloadBillPdf(createdBill._id, createdBill.billNumber)}
+              onClick={() => downloadBillPdf(createdBill._id, createdBill)}
             >
               Download PDF Bill Again
             </Button>
@@ -734,7 +734,7 @@ const Billing = () => {
                               <Button size="small" variant="outlined" onClick={() => setSelectedBill(b)}>View</Button>
                               <IconButton
                                 size="small" color="primary" title="Download PDF Bill"
-                                onClick={() => downloadBillPdf(b._id, b.billNumber)}
+                                onClick={() => downloadBillPdf(b._id, b)}
                               >
                                 <PdfIcon fontSize="small" />
                               </IconButton>

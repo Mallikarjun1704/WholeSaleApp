@@ -102,7 +102,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
           <Button size="small" startIcon={<ViewIcon />} variant="outlined" color="info" onClick={() => openBillPdf(bill._id)}>
             Open PDF
           </Button>
-          <Button size="small" startIcon={<DownloadIcon />} variant="contained" color="primary" onClick={() => downloadBillPdf(bill._id, bill.billNumber)}>
+          <Button size="small" startIcon={<DownloadIcon />} variant="contained" color="primary" onClick={() => downloadBillPdf(bill._id, bill)}>
             Download PDF
           </Button>
         </Box>
@@ -247,7 +247,7 @@ const CustomerRow = ({ customer, onEdit }) => {
                           <TableCell>
                             <Stack direction="row" spacing={0.5} alignItems="center">
                               <Button size="small" onClick={() => setSelectedBill(b)}>View</Button>
-                              <IconButton size="small" color="primary" title="Download PDF" onClick={() => downloadBillPdf(b._id, b.billNumber)}>
+                              <IconButton size="small" color="primary" title="Download PDF" onClick={() => downloadBillPdf(b._id, b)}>
                                 <PdfIcon fontSize="small" />
                               </IconButton>
                             </Stack>
