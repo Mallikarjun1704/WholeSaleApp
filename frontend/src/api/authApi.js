@@ -8,6 +8,7 @@ export const authApi = apiSlice.injectEndpoints({
         method: 'POST',
         body: credentials,
       }),
+      invalidatesTags: ['Setup', 'Auth'],
     }),
     logout: builder.mutation({
       query: () => ({
@@ -21,6 +22,7 @@ export const authApi = apiSlice.injectEndpoints({
     }),
     checkSetup: builder.query({
       query: () => '/auth/check-setup',
+      providesTags: ['Setup'],
     }),
     setup: builder.mutation({
       query: (data) => ({
@@ -28,6 +30,7 @@ export const authApi = apiSlice.injectEndpoints({
         method: 'POST',
         body: data,
       }),
+      invalidatesTags: ['Setup', 'Auth'],
     }),
     updatePassword: builder.mutation({
       query: (data) => ({
@@ -35,6 +38,25 @@ export const authApi = apiSlice.injectEndpoints({
         method: 'PUT',
         body: data,
       }),
+    }),
+    getUsers: builder.query({
+      query: () => '/auth/users',
+      providesTags: ['Users'],
+    }),
+    createUser: builder.mutation({
+      query: (data) => ({
+        url: '/auth/users',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['Users'],
+    }),
+    toggleUserAccess: builder.mutation({
+      query: (id) => ({
+        url: `/auth/users/${id}/toggle-access`,
+        method: 'PUT',
+      }),
+      invalidatesTags: ['Users'],
     }),
   }),
 });
@@ -46,4 +68,7 @@ export const {
   useCheckSetupQuery,
   useSetupMutation,
   useUpdatePasswordMutation,
+  useGetUsersQuery,
+  useCreateUserMutation,
+  useToggleUserAccessMutation,
 } = authApi;

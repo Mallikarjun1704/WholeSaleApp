@@ -7,6 +7,7 @@ const {
   getBillById,
   getBillsByCustomer,
   updateBillPaymentStatus,
+  updateBill,
   getBillPdf,
 } = require('../controllers/billingController');
 
@@ -17,6 +18,7 @@ router.post('/', createBill);
 router.get('/', getBills);
 router.get('/customer/:customerId', getBillsByCustomer);
 router.get('/:id', getBillById);
+router.put('/:id', authorize('admin'), updateBill);
 router.get('/:id/pdf', getBillPdf);
 router.patch('/:id/payment', authorize('admin'), updateBillPaymentStatus);
 

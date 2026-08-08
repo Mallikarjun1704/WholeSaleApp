@@ -56,11 +56,13 @@ export const apiSlice = createApi({
   baseQuery: baseQueryWithReauth,
   tagTypes: [
     'Auth',
+    'Setup',
     'Dashboard',
     'Products',
     'Batches',
     'Customers',
     'Suppliers',
+    'Purchases',
     'Bills',
     'Credits',
     'Reports',

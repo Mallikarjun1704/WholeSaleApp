@@ -23,6 +23,7 @@ import Suppliers from './pages/Suppliers';
 import Investments from './pages/Investments';
 import Expenses from './pages/Expenses';
 import WholesalerComparisonModule from './pages/WholesalerComparisonModule';
+import UserManagement from './pages/UserManagement';
 import Unauthorized from './pages/Unauthorized';
 
 const App = () => {
@@ -43,7 +44,8 @@ const App = () => {
     );
   }
 
-  const isSetupComplete = setupData?.data?.isSetupComplete;
+  // Default isSetupComplete to true unless explicitly returned as false by backend
+  const isSetupComplete = setupData?.data?.isSetupComplete !== false;
 
   return (
     <ThemeProvider theme={theme}>
@@ -126,7 +128,14 @@ const App = () => {
 
             {/* Settings - placeholder for Phase 9 */}
             <Route path="/settings/shop" element={<PlaceholderPage title="Shop Settings" />} />
-            <Route path="/settings/users" element={<PlaceholderPage title="User Management" />} />
+            <Route
+              path="/settings/users"
+              element={
+                <ProtectedRoute roles={['admin']}>
+                  <UserManagement />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/settings/gst" element={<PlaceholderPage title="GST Settings" />} />
             <Route path="/settings/printer" element={<PlaceholderPage title="Printer Settings" />} />
             <Route path="/settings/invoice" element={<PlaceholderPage title="Invoice Settings" />} />

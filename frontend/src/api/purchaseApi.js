@@ -38,6 +38,14 @@ export const purchaseApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Purchases', 'Suppliers', 'Dashboard'],
     }),
+    updatePurchase: builder.mutation({
+      query: ({ id, ...data }) => ({
+        url: `/purchases/${id}`,
+        method: 'PUT',
+        body: data,
+      }),
+      invalidatesTags: ['Purchases', 'Suppliers', 'Products', 'Batches', 'Dashboard'],
+    }),
   }),
 });
 
@@ -49,4 +57,5 @@ export const {
   useLazyGetNextInvoiceNumberQuery,
   useCreatePurchaseMutation,
   useUpdatePurchasePaymentMutation,
+  useUpdatePurchaseMutation,
 } = purchaseApi;

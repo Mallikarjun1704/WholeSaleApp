@@ -174,16 +174,20 @@ const createPurchase = asyncHandler(async (req, res) => {
     notes: notes || '',
   });
 
+  // Calculate overhead ratio (commission + travel charge) per subtotal
+  const overheadRatio = subtotal > 0 ? (commAmount + travel) / subtotal : 0;
+
   // Create Batch records and update Product stock for each item
   for (let idx = 0; idx < processedItems.length; idx++) {
     const item = processedItems[idx];
+    const effectivePrice = Math.round(item.purchasePrice * (1 + overheadRatio));
     // Create batch record per item
     await Batch.create({
       batchId: processedItems.length > 1 ? `${batchId}-${idx + 1}` : batchId,
       product: item.product,
       purchase: purchase._id,
       supplier: supplier._id,
-      purchasePrice: item.purchasePrice,
+      purchasePrice: effectivePrice,
       quantity: item.quantity,
       remainingQty: item.quantity,
       imeiNumbers: item.imeiNumbers,
@@ -347,11 +351,173 @@ const getPurchases = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Update purchase bill (Admin only)
+ * @route   PUT /api/purchases/:id
+ * @access  Private (Admin)
+ */
+const updatePurchase = asyncHandler(async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Only Admin can edit purchase bills' });
+  }
+
+  const purchase = await Purchase.findById(req.params.id);
+  if (!purchase) {
+    return res.status(404).json({ success: false, message: 'Purchase bill not found' });
+  }
+
+  if (purchase.paymentStatus === 'Paid') {
+    return res.status(400).json({
+      success: false,
+      message: 'This purchase bill has been fully paid and cannot be edited.',
+    });
+  }
+
+  const { commissionPercent, travelCharge, notes, purchaseDate, items } = req.body;
+
+  let processedItems = purchase.items;
+  let hasItemsUpdate = false;
+
+  // If items array is provided in request body
+  if (items !== undefined && Array.isArray(items)) {
+    if (items.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one item is required in purchase bill' });
+    }
+
+    hasItemsUpdate = true;
+
+    // Step 1: Revert previous stock additions and IMEI numbers for old purchase items
+    for (const oldItem of purchase.items) {
+      await Product.findByIdAndUpdate(oldItem.product, {
+        $inc: { stock: -oldItem.quantity },
+        $pull: { imeiList: { $in: oldItem.imeiNumbers || [] } },
+      });
+    }
+    await Batch.deleteMany({ purchase: purchase._id });
+
+    // Step 2: Process new items
+    processedItems = [];
+    let newSubtotal = 0;
+
+    for (const item of items) {
+      const prodId = item.productId || item.product;
+      if (!prodId || !item.quantity || !item.purchasePrice) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each item requires product ID, quantity, and purchase price',
+        });
+      }
+
+      const product = await Product.findById(prodId);
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message: `Product not found: ${prodId}`,
+        });
+      }
+
+      const qty = Number(item.quantity);
+      const price = Number(item.purchasePrice);
+      const imeiArr = Array.isArray(item.imeiNumbers)
+        ? item.imeiNumbers
+        : typeof item.imeiNumbers === 'string'
+        ? item.imeiNumbers.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+
+      const itemTotal = qty * price;
+      newSubtotal += itemTotal;
+
+      processedItems.push({
+        product: product._id,
+        quantity: qty,
+        purchasePrice: price,
+        imeiNumbers: imeiArr,
+        total: itemTotal,
+      });
+    }
+
+    purchase.items = processedItems;
+    purchase.subtotal = newSubtotal;
+  }
+
+  // Recalculate overheads, commission & total amount
+  const commPercent = commissionPercent !== undefined ? Number(commissionPercent) : purchase.commissionPercent;
+  const travel = travelCharge !== undefined ? Number(travelCharge) : purchase.travelCharge;
+  const commAmount = Math.round(((purchase.subtotal + travel) * commPercent) / 100);
+
+  const oldTotal = purchase.totalAmount;
+  const newTotal = purchase.subtotal + commAmount + travel;
+  const diff = newTotal - oldTotal;
+
+  purchase.commissionPercent = commPercent;
+  purchase.travelCharge = travel;
+  purchase.commissionAmount = commAmount;
+  purchase.totalAmount = newTotal;
+  if (notes !== undefined) purchase.notes = notes;
+  if (purchaseDate) purchase.purchaseDate = new Date(purchaseDate);
+
+  // If items were updated, re-create batches and update product stock & imeiList
+  if (hasItemsUpdate) {
+    const overheadRatio = purchase.subtotal > 0 ? (commAmount + travel) / purchase.subtotal : 0;
+    for (let idx = 0; idx < processedItems.length; idx++) {
+      const item = processedItems[idx];
+      const effectivePrice = Math.round(item.purchasePrice * (1 + overheadRatio));
+
+      await Batch.create({
+        batchId: processedItems.length > 1 ? `${purchase.batchId}-${idx + 1}` : purchase.batchId,
+        product: item.product,
+        purchase: purchase._id,
+        supplier: purchase.supplier,
+        purchasePrice: effectivePrice,
+        quantity: item.quantity,
+        remainingQty: item.quantity,
+        imeiNumbers: item.imeiNumbers,
+      });
+
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { stock: item.quantity },
+        $push: { imeiList: { $each: item.imeiNumbers } },
+      });
+    }
+  }
+
+  // Adjust payment status if total changed
+  const paid = purchase.paidAmount || 0;
+  if (paid >= newTotal) {
+    purchase.paymentStatus = 'Paid';
+    purchase.paidDate = new Date();
+  } else if (paid > 0) {
+    purchase.paymentStatus = 'Partially Paid';
+  } else {
+    purchase.paymentStatus = 'Unpaid';
+  }
+
+  await purchase.save();
+
+  // Update supplier pending debt
+  if (diff !== 0 && purchase.supplier) {
+    await Supplier.findByIdAndUpdate(purchase.supplier, {
+      $inc: { pendingCredit: diff },
+    });
+  }
+
+  const updatedPurchase = await Purchase.findById(purchase._id)
+    .populate('supplier', 'name phone')
+    .populate('items.product', 'name sku');
+
+  res.status(200).json({
+    success: true,
+    message: 'Purchase bill updated successfully',
+    data: updatedPurchase,
+  });
+});
+
 module.exports = {
   createPurchase,
   getPurchases,
   getPurchasesBySupplier,
   getPurchaseById,
   updatePurchasePaymentStatus,
+  updatePurchase,
   getNextInvoiceNumber,
 };

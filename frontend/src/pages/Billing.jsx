@@ -2,21 +2,38 @@ import React, { useState } from 'react';
 import {
   Box, Typography, Card, Button, TextField, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog, DialogTitle, DialogContent,
-  DialogActions, Skeleton, Divider, Grid, Stack, Tabs, Tab, Alert, Paper,
+  DialogActions, Skeleton, Divider, Grid, Stack, Tabs, Tab, Alert, Paper, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon,
   Receipt as BillIcon, Close as CloseIcon, CheckCircle as CheckCircleIcon,
   PictureAsPdf as PdfIcon, Download as DownloadIcon, Visibility as ViewIcon,
-  Print as PrintIcon, CheckCircleOutline as SuccessIcon,
+  Print as PrintIcon, CheckCircleOutline as SuccessIcon, Edit as EditIcon,
 } from '@mui/icons-material';
-import { useGetBillsQuery, useCreateBillMutation, useUpdateBillPaymentMutation } from '../api/billingApi';
+import { useSelector } from 'react-redux';
+import { selectCurrentUser } from '../features/auth/authSlice';
+import {
+  useGetBillsQuery,
+  useCreateBillMutation,
+  useUpdateBillPaymentMutation,
+  useUpdateBillMutation,
+} from '../api/billingApi';
 import { useGetCustomersQuery } from '../api/customerApi';
 import { useGetInventoryQuery } from '../api/inventoryApi';
 import { downloadBillPdf, openBillPdf } from '../utils/pdfUtils';
 
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
+
+const formatDateDDMMYYYY = (dateStr) => {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '-';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+};
 
 // ========== Bill Detail Viewer Dialog ==========
 const BillDetailsDialog = ({ open, onClose, bill }) => {
@@ -26,19 +43,19 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          {/* TM Short Name Logo Emblem */}
           <Box sx={{
-            width: 42, height: 42, borderRadius: '10px',
-            background: 'linear-gradient(135deg, #4F46E5, #0EA5E9)',
+            width: 48, height: 48, borderRadius: '14px',
+            background: 'linear-gradient(135deg, #6366F1 0%, #0EA5E9 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontWeight: 900, fontSize: '1.25rem', letterSpacing: 1,
-            boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)',
+            color: '#fff', fontWeight: 900, fontSize: '1.4rem', letterSpacing: 1,
+            boxShadow: '0 6px 16px rgba(99, 102, 241, 0.4)',
+            border: '2px solid rgba(255, 255, 255, 0.3)',
           }}>
             TM
           </Box>
           <Box>
-            <Typography variant="h6" fontWeight={800} color="text.primary">TM Mobiles Bill</Typography>
-            <Typography variant="caption" color="text.secondary">Bill #{bill.billNumber} • Invoice</Typography>
+            <Typography variant="h6" fontWeight={900} sx={{ background: 'linear-gradient(135deg, #6366F1, #0EA5E9)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>TECH MART</Typography>
+            <Typography variant="caption" color="text.secondary" fontWeight={700}>Wholesale Bill #{bill.billNumber}</Typography>
           </Box>
         </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
@@ -55,7 +72,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
             </Grid>
             <Grid item xs={12} sm={6} sx={{ textAlign: { sm: 'right' } }}>
               <Typography variant="caption" color="text.secondary" fontWeight={700}>INVOICE DETAILS:</Typography>
-              <Typography variant="body2"><strong>Date:</strong> {new Date(bill.billDate || bill.createdAt).toLocaleString('en-IN')}</Typography>
+              <Typography variant="body2"><strong>Date:</strong> {formatDateDDMMYYYY(bill.billDate || bill.createdAt)}</Typography>
             </Grid>
           </Grid>
         </Paper>
@@ -93,7 +110,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
         <Stack spacing={1} sx={{ alignItems: 'flex-end' }}>
           <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(bill.subtotal)}</strong></Typography>
           <Typography variant="body2" color="text.secondary">GST Amount: <strong>{formatCurrency(bill.gstAmount)}</strong></Typography>
-          {bill.discount > 0 && <Typography variant="body2" color="text.secondary">Discount: <strong>- {formatCurrency(bill.discount)}</strong></Typography>}
+          {bill.discount > 0 && <Typography variant="body2" color="text.secondary">Packing Charges: <strong>+ {formatCurrency(bill.discount)}</strong></Typography>}
           <Paper elevation={0} sx={{ p: 1.5, px: 3, bgcolor: 'primary.main', color: '#fff', borderRadius: 2, mt: 1, mb: 1 }}>
             <Typography variant="subtitle1" fontWeight={800}>Grand Total: {formatCurrency(bill.finalAmount)}</Typography>
           </Paper>
@@ -114,6 +131,195 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
           </Button>
         </Box>
         <Button onClick={onClose} variant="outlined">Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// ========== Admin Edit Bill Dialog ==========
+const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading }) => {
+  const [packingCharges, setPackingCharges] = useState(bill?.discount || 0);
+  const [billDate, setBillDate] = useState(
+    bill?.billDate ? new Date(bill.billDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
+  );
+  const [items, setItems] = useState([]);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  React.useEffect(() => {
+    if (bill) {
+      setPackingCharges(bill.discount || 0);
+      setBillDate(
+        bill.billDate ? new Date(bill.billDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
+      );
+      setItems(
+        (bill.items || []).map((item) => ({
+          productId: item.product?._id || item.product,
+          quantity: item.quantity || 1,
+          sellingPrice: item.sellingPrice || 0,
+          gstRate: item.gstRate || 0,
+        }))
+      );
+    }
+  }, [bill]);
+
+  const sortedProducts = React.useMemo(() => {
+    return [...products].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [products]);
+
+  const addItem = () =>
+    setItems([...items, { productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
+  const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
+  const updateItem = (i, field, value) => {
+    const updated = [...items];
+    updated[i][field] = value;
+
+    if (field === 'productId' && value) {
+      const prod = products.find((p) => p._id === value);
+      if (prod) {
+        updated[i].sellingPrice = prod.sellingPrice;
+      }
+    }
+    setItems(updated);
+  };
+
+  const subtotal = items.reduce((sum, item) => {
+    const qty = Number(item.quantity) || 0;
+    const price = Number(item.sellingPrice) || 0;
+    return sum + qty * price;
+  }, 0);
+
+  const gstAmount = items.reduce((sum, item) => {
+    if (!item.productId) return sum;
+    const rate = Number(item.gstRate) || 0;
+    const qty = Number(item.quantity) || 0;
+    const price = Number(item.sellingPrice) || 0;
+    return sum + Math.round((qty * price * rate) / 100);
+  }, 0);
+
+  const finalAmount = subtotal + gstAmount + (Number(packingCharges) || 0);
+
+  const handleSubmit = () => {
+    setErrorMsg('');
+    const validItems = items.filter((i) => i.productId && Number(i.quantity) > 0 && Number(i.sellingPrice) >= 0);
+    if (validItems.length === 0) {
+      setErrorMsg('At least one valid product item is required in the bill');
+      return;
+    }
+
+    onSave({
+      discount: Number(packingCharges) || 0,
+      billDate,
+      items: validItems.map((i) => ({
+        productId: i.productId,
+        quantity: Number(i.quantity),
+        sellingPrice: Number(i.sellingPrice),
+        gstRate: Number(i.gstRate) || 0,
+      })),
+    });
+  };
+
+  if (!bill) return null;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>Edit Bill: #{bill.billNumber}</DialogTitle>
+      <DialogContent dividers>
+        {errorMsg && <Alert severity="error" sx={{ mb: 2 }}>{errorMsg}</Alert>}
+        <Stack spacing={2} sx={{ mt: 0.5 }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Bill Date *"
+                type="date"
+                value={billDate}
+                onChange={(e) => setBillDate(e.target.value)}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Packing Charges ₹"
+                type="number"
+                value={packingCharges}
+                onChange={(e) => setPackingCharges(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+          </Grid>
+
+          <Box sx={{ mt: 2, mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Bill Product Items</Typography>
+          </Box>
+
+          {items.map((item, i) => (
+            <Grid container spacing={1.5} key={i} sx={{ mb: 1.5, alignItems: 'center' }}>
+              <Grid item xs={4}>
+                <Autocomplete
+                  options={sortedProducts}
+                  getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name} (${option.sku})`}
+                  value={sortedProducts.find((p) => p._id === item.productId) || null}
+                  onChange={(event, newValue) => {
+                    updateItem(i, 'productId', newValue ? newValue._id : '');
+                  }}
+                  isOptionEqualToValue={(option, val) => option._id === (val?._id || val)}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Select Product *" size="small" fullWidth placeholder="Search product..." />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={2}>
+                <TextField label="Qty *" type="number" value={item.quantity} onChange={(e) => updateItem(i, 'quantity', e.target.value)} fullWidth size="small" />
+              </Grid>
+              <Grid item xs={2.5}>
+                <TextField label="Selling Price ₹ *" type="number" value={item.sellingPrice} onChange={(e) => updateItem(i, 'sellingPrice', e.target.value)} fullWidth size="small" />
+              </Grid>
+              <Grid item xs={2.5}>
+                <TextField label="GST %" type="number" value={item.gstRate} onChange={(e) => updateItem(i, 'gstRate', e.target.value)} fullWidth size="small" />
+              </Grid>
+              <Grid item xs={1}>
+                {items.length > 1 && (
+                  <IconButton size="small" onClick={() => removeItem(i)} color="error">
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Grid>
+            </Grid>
+          ))}
+
+          <Button size="small" startIcon={<AddIcon />} onClick={addItem} sx={{ alignSelf: 'flex-start' }}>
+            Add Another Product
+          </Button>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 3, flexWrap: 'wrap' }}>
+            <Typography variant="body2" color="text.secondary">
+              Subtotal: <strong>{formatCurrency(subtotal)}</strong>
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              GST: <strong>{formatCurrency(gstAmount)}</strong>
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Packing Charges: <strong>{formatCurrency(Number(packingCharges) || 0)}</strong>
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={800} color="primary.main">
+              Total: {formatCurrency(finalAmount)}
+            </Typography>
+          </Box>
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 1.5 }}>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={isLoading || items.every((i) => !i.productId)}
+        >
+          {isLoading ? 'Saving...' : 'Update Bill'}
+        </Button>
       </DialogActions>
     </Dialog>
   );
@@ -171,11 +377,13 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 10));
-  const [paidAmount, setPaidAmount] = useState(0);
-  const [discount, setDiscount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [packingCharges, setPackingCharges] = useState(0);
   const [items, setItems] = useState([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
   const [createdBill, setCreatedBill] = useState(null);
+
+  const sortedCustomers = React.useMemo(() => {
+    return [...customers].sort((a, b) => (a.shopName || a.name || '').localeCompare(b.shopName || b.name || ''));
+  }, [customers]);
 
   const addItem = () => setItems([...items, { productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
   const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
@@ -183,7 +391,6 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
     const updated = [...items];
     updated[i][field] = value;
 
-    // Auto-fill price if product changes
     if (field === 'productId' && value) {
       const prod = products.find(p => p._id === value);
       if (prod) {
@@ -208,16 +415,16 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
     return sum + Math.round((qty * price * rate) / 100);
   }, 0);
 
-  const finalAmount = subtotal + gstAmount - (Number(discount) || 0);
+  const finalAmount = subtotal + gstAmount + (Number(packingCharges) || 0);
 
   const handleSubmit = async () => {
     setErrorMsg('');
     const payload = {
       customerId,
       billDate: saleDate,
-      paidAmount: Number(paidAmount) || 0,
-      discount: Number(discount) || 0,
-      paymentMethod,
+      paidAmount: 0,
+      discount: Number(packingCharges) || 0,
+      paymentMethod: 'Credit',
       items: items.filter(i => i.productId && i.quantity).map(i => ({
         productId: i.productId,
         quantity: Number(i.quantity),
@@ -230,15 +437,13 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
       const newBill = res.data;
       setCreatedBill(newBill);
       
-      // Auto-trigger PDF download for instant experience
       if (newBill && newBill._id) {
         downloadBillPdf(newBill._id, newBill.billNumber);
       }
 
       setCustomerId('');
       setSaleDate(new Date().toISOString().slice(0, 10));
-      setPaidAmount(0);
-      setDiscount(0);
+      setPackingCharges(0);
       setItems([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
       setErrorMsg('');
     } catch (err) {
@@ -251,28 +456,23 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
       <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Generate Wholesale Bill</Typography>
       {errorMsg && <Alert severity="error" sx={{ mb: 2 }}>{errorMsg}</Alert>}
       <Grid container spacing={2.5} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={4}>
-          <TextField select label="Retail Store (Customer) *" value={customerId} onChange={(e) => setCustomerId(e.target.value)} fullWidth size="small" SelectProps={{ native: true }}>
-            <option value="">Select Retail Store...</option>
-            {customers.map(c => <option key={c._id} value={c._id}>{c.shopName} ({c.ownerName})</option>)}
-          </TextField>
+        <Grid item xs={12} sm={5}>
+          <Autocomplete
+            options={sortedCustomers}
+            getOptionLabel={(option) => typeof option === 'string' ? option : `${option.shopName || option.name} (${option.ownerName || option.phone || ''})`}
+            value={sortedCustomers.find(c => c._id === customerId) || null}
+            onChange={(_, newValue) => setCustomerId(newValue ? newValue._id : '')}
+            isOptionEqualToValue={(option, val) => option._id === (val?._id || val)}
+            renderInput={(params) => (
+              <TextField {...params} label="Retail Store (Customer) *" size="small" fullWidth placeholder="Type to filter store alphabetically..." />
+            )}
+          />
         </Grid>
-        <Grid item xs={12} sm={3}>
+        <Grid item xs={12} sm={3.5}>
           <TextField label="Sale Date *" type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} fullWidth size="small" InputLabelProps={{ shrink: true }} />
         </Grid>
-        <Grid item xs={12} sm={2.5}>
-          <TextField select label="Payment Method" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} fullWidth size="small" SelectProps={{ native: true }}>
-            <option value="Cash">Cash</option>
-            <option value="Card">Card</option>
-            <option value="UPI">UPI</option>
-            <option value="Credit">Credit</option>
-          </TextField>
-        </Grid>
-        <Grid item xs={12} sm={2.5}>
-          <TextField label="Discount Amount ₹" type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} fullWidth size="small" />
-        </Grid>
-        <Grid item xs={12} sm={3}>
-          <TextField label="Initial Amount Paid ₹" type="number" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} fullWidth size="small" />
+        <Grid item xs={12} sm={3.5}>
+          <TextField label="Packing Charges ₹" type="number" value={packingCharges} onChange={(e) => setPackingCharges(e.target.value)} fullWidth size="small" />
         </Grid>
       </Grid>
 
@@ -320,9 +520,11 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
       <Button size="small" startIcon={<AddIcon />} onClick={addItem} sx={{ mb: 3 }}>Add Mobile Item</Button>
 
       <Divider sx={{ my: 2 }} />
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 4, mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 4, mb: 3, flexWrap: 'wrap' }}>
+        <Typography variant="body2" color="text.secondary">Total Quantity: <strong>{items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)} Units</strong></Typography>
         <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(subtotal)}</strong></Typography>
         <Typography variant="body2" color="text.secondary">GST Amount: <strong>{formatCurrency(gstAmount)}</strong></Typography>
+        <Typography variant="body2" color="text.secondary">Packing Charges: <strong>+ {formatCurrency(Number(packingCharges) || 0)}</strong></Typography>
         <Typography variant="subtitle1" fontWeight={800} color="primary.main">Grand Total: {formatCurrency(finalAmount)}</Typography>
       </Box>
 
@@ -395,14 +597,20 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
 
 // ========== Main Billing Page ==========
 const Billing = () => {
+  const currentUser = useSelector(selectCurrentUser);
+  const isAdmin = currentUser?.role === 'admin';
+
   const [tab, setTab] = useState(0);
   const [searchStatus, setSearchStatus] = useState('');
   const { data: billsData, isLoading: billsLoading } = useGetBillsQuery({ status: searchStatus });
   const { data: customersData } = useGetCustomersQuery('');
   const [updateBillPayment] = useUpdateBillPaymentMutation();
+  const [updateBill, { isLoading: isUpdatingBill }] = useUpdateBillMutation();
 
   const [selectedBill, setSelectedBill] = useState(null);
   const [paymentBill, setPaymentBill] = useState(null);
+  const [editingBill, setEditingBill] = useState(null);
+
   const { data: inventoryData } = useGetInventoryQuery({});
   const productsList = inventoryData?.data || [];
 
@@ -419,20 +627,37 @@ const Billing = () => {
     }
   };
 
+  const handleSaveEditBill = async (data) => {
+    if (!editingBill) return;
+    try {
+      await updateBill({ id: editingBill._id, ...data }).unwrap();
+      setEditingBill(null);
+    } catch (err) {
+      alert(err?.data?.message || 'Failed to update bill');
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" fontWeight={800}>Billing</Typography>
-          <Typography variant="body2" color="text.secondary">Generate sales bills with TM PDF branding and track collections.</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box sx={{
-            width: 48, height: 48, borderRadius: '14px',
-            background: 'linear-gradient(135deg, #6366F1, #0EA5E9)',
+            width: 54, height: 54, borderRadius: '16px',
+            background: 'linear-gradient(135deg, #6366F1 0%, #0EA5E9 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontWeight: 900, fontSize: '1.5rem', letterSpacing: 1.5,
+            boxShadow: '0 8px 20px rgba(99, 102, 241, 0.35)',
+            border: '2px solid rgba(255, 255, 255, 0.4)',
           }}>
-            <BillIcon sx={{ color: '#fff', fontSize: 24 }} />
+            TM
+          </Box>
+          <Box>
+            <Typography variant="h4" fontWeight={900} sx={{ background: 'linear-gradient(135deg, #6366F1, #0EA5E9)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>
+              TECH MART Billing
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Generate sales bills with TM branding, total quantities, and PDF export.
+            </Typography>
           </Box>
         </Box>
       </Box>
@@ -488,7 +713,7 @@ const Billing = () => {
                         <TableRow key={b._id} hover>
                           <TableCell sx={{ fontWeight: 600 }}>{b.billNumber}</TableCell>
                           <TableCell>{b.customer?.shopName || 'Unknown'}</TableCell>
-                          <TableCell>{new Date(b.billDate || b.createdAt).toLocaleDateString('en-IN')}</TableCell>
+                          <TableCell>{formatDateDDMMYYYY(b.billDate || b.createdAt)}</TableCell>
                           <TableCell align="center">{b.items?.length || 0}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(b.finalAmount)}</TableCell>
                           <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(paid)}</TableCell>
@@ -513,6 +738,16 @@ const Billing = () => {
                               >
                                 <PdfIcon fontSize="small" />
                               </IconButton>
+                              {!isPaid && isAdmin && (
+                                <IconButton
+                                  size="small"
+                                  color="warning"
+                                  title="Edit Bill"
+                                  onClick={() => setEditingBill(b)}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              )}
                             </Stack>
                           </TableCell>
                         </TableRow>
@@ -520,7 +755,7 @@ const Billing = () => {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                      <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                         No bills found.
                       </TableCell>
                     </TableRow>
@@ -544,7 +779,18 @@ const Billing = () => {
           totalAmount={paymentBill.finalAmount}
           paidAmount={paymentBill.paidAmount}
           onSave={handleRecordPayment}
-          isLoading={false} // Would normally hook to mutation status
+          isLoading={false}
+        />
+      )}
+
+      {editingBill && (
+        <EditBillDialog
+          open={Boolean(editingBill)}
+          onClose={() => setEditingBill(null)}
+          bill={editingBill}
+          products={productsList}
+          onSave={handleSaveEditBill}
+          isLoading={isUpdatingBill}
         />
       )}
     </Box>

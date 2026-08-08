@@ -156,7 +156,15 @@ const Setup = () => {
       >
         <CardContent sx={{ p: { xs: 3, md: 5 } }}>
           {/* Header */}
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Box sx={{ textAlign: 'center', mb: 4, position: 'relative' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => navigate('/login')}
+              sx={{ position: { sm: 'absolute' }, right: 0, top: 0, mb: { xs: 2, sm: 0 } }}
+            >
+              Go to Login
+            </Button>
             <Typography variant="h4" fontWeight={800} gutterBottom>
               System Setup Wizard
             </Typography>

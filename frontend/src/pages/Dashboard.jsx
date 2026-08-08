@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Grid,
@@ -13,7 +13,20 @@ import {
   Avatar,
   ListItemText,
   Divider,
-  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TableContainer,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Paper,
+  CircularProgress,
+  IconButton,
 } from '@mui/material';
 import {
   Inventory as InventoryIcon,
@@ -21,11 +34,8 @@ import {
   TrendingUp as ProfitIcon,
   TrendingDown as LossIcon,
   CreditCard as CreditIcon,
-  People as CustomerIcon,
   AccountBalanceWallet as StockValueIcon,
   Warning as LowStockIcon,
-  RemoveShoppingCart as OutOfStockIcon,
-  Receipt as BillIcon,
   CalendarMonth as MonthlyIcon,
   ShowChart as MonthlyProfitIcon,
   LocalShipping as PurchaseIcon,
@@ -41,6 +51,7 @@ import {
   Backup as BackupIcon,
   Settings as SettingsIcon,
   Error as AlertIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import {
   AreaChart,
@@ -58,6 +69,7 @@ import {
   useGetDashboardStatsQuery,
   useGetDashboardChartsQuery,
   useGetRecentActivitiesQuery,
+  useGetDashboardDetailsQuery,
 } from '../api/dashboardApi';
 
 dayjs.extend(relativeTime);
@@ -72,14 +84,16 @@ const formatCurrency = (value) => {
 };
 
 // Stat Card Component
-const StatCard = ({ title, value, icon, color, gradient, isLoading }) => (
+const StatCard = ({ title, value, icon, color, gradient, isLoading, onClick }) => (
   <Card
+    onClick={onClick}
     sx={{
       position: 'relative',
       overflow: 'hidden',
+      cursor: onClick ? 'pointer' : 'default',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       '&:hover': {
-        transform: 'translateY(-6px)',
+        transform: onClick ? 'translateY(-6px) scale(1.02)' : 'translateY(-6px)',
         boxShadow: (theme) => `0 12px 30px ${alpha(color || theme.palette.primary.main, 0.25)}`,
       },
     }}
@@ -164,10 +178,145 @@ const getActivityConfig = (action) => {
   }
 };
 
+// Popup Modal Component for Card Details
+const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
+  const { data, isLoading } = useGetDashboardDetailsQuery(detailType, { skip: !open || !detailType });
+  const items = data?.data || [];
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6" fontWeight={700}>
+          {title || 'Details'}
+        </Typography>
+        <IconButton onClick={onClose} size="small">
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <Divider />
+      <DialogContent sx={{ p: 2, minHeight: 300 }}>
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200 }}>
+            <CircularProgress />
+          </Box>
+        ) : items.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 5 }}>
+            <Typography variant="body1" color="text.secondary">
+              No detail records found.
+            </Typography>
+          </Box>
+        ) : (
+          <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+            <Table size="small">
+              <TableHead sx={{ bgcolor: 'action.hover' }}>
+                <TableRow>
+                  {detailType === 'pendingCollections' && (
+                    <>
+                      <TableCell sx={{ fontWeight: 700 }}>Invoice Number</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>StoreName</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>PhoneNumber</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Total Amount</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Pending Amount</TableCell>
+                    </>
+                  )}
+                  {detailType === 'totalQuantity' && (
+                    <>
+                      <TableCell sx={{ fontWeight: 700 }}>Invoice Number</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Store Name</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>Total Quantity</TableCell>
+                    </>
+                  )}
+                  {(detailType === 'totalProducts' || detailType === 'totalQuantitySold') && (
+                    <>
+                      <TableCell sx={{ fontWeight: 700 }}>Product Name</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>
+                        {detailType === 'totalQuantitySold' ? 'Sold Qty' : 'Stock Qty'}
+                      </TableCell>
+                    </>
+                  )}
+                  {detailType === 'lowStockItems' && (
+                    <>
+                      <TableCell sx={{ fontWeight: 700 }}>Product Name</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>Stock Qty</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>Low Stock Threshold</TableCell>
+                    </>
+                  )}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {items.map((row, idx) => (
+                  <TableRow key={row._id || row.id || idx} hover>
+                    {detailType === 'pendingCollections' && (
+                      <>
+                        <TableCell><strong>{row.invoiceNumber}</strong></TableCell>
+                        <TableCell>{row.storeName}</TableCell>
+                        <TableCell>{row.phoneNumber}</TableCell>
+                        <TableCell align="right">{formatCurrency(row.totalAmount)}</TableCell>
+                        <TableCell align="right" sx={{ color: 'error.main', fontWeight: 700 }}>
+                          {formatCurrency(row.pendingAmount)}
+                        </TableCell>
+                      </>
+                    )}
+                    {detailType === 'totalQuantity' && (
+                      <>
+                        <TableCell><strong>{row.invoiceNumber}</strong></TableCell>
+                        <TableCell>{row.storeName}</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 700 }}>
+                          {row.totalQuantity}
+                        </TableCell>
+                      </>
+                    )}
+                    {(detailType === 'totalProducts' || detailType === 'totalQuantitySold') && (
+                      <>
+                        <TableCell><strong>{row.name || 'Unknown Product'}</strong></TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 700 }}>
+                          {row.stock}
+                        </TableCell>
+                      </>
+                    )}
+                    {detailType === 'lowStockItems' && (
+                      <>
+                        <TableCell><strong>{row.name}</strong></TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 700, color: 'error.main' }}>
+                          {row.stock}
+                        </TableCell>
+                        <TableCell align="center">
+                          {row.lowStockThreshold || 5}
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose} variant="outlined">
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const Dashboard = () => {
   const { data: statsData, isLoading: statsLoading } = useGetDashboardStatsQuery();
   const { data: chartsData, isLoading: chartsLoading } = useGetDashboardChartsQuery();
   const { data: activitiesData, isLoading: activitiesLoading } = useGetRecentActivitiesQuery();
+
+  const [activeModal, setActiveModal] = useState({ open: false, type: '', title: '' });
+
+  const handleOpenModal = (type, title) => {
+    if (type) {
+      setActiveModal({ open: true, type, title });
+    }
+  };
+
+  const handleCloseModal = () => {
+    setActiveModal({ open: false, type: '', title: '' });
+  };
 
   const stats = statsData?.data || {};
   const charts = chartsData?.data || [];
@@ -175,23 +324,53 @@ const Dashboard = () => {
 
   const statCardsData = [
     { title: 'Amount in Hand', value: formatCurrency(stats.cashInHand), icon: <StockValueIcon />, color: '#10B981' },
-    { title: 'Partner Capital', value: formatCurrency(stats.totalInvestments), icon: <CreditIcon />, color: '#6366F1' },
-    { title: 'Store Expenses', value: formatCurrency(stats.totalExpenses), icon: <LossIcon />, color: '#EF4444' },
-    { title: 'Pending Collection', value: formatCurrency(stats.pendingCollection), icon: <CreditIcon />, color: '#F59E0B' },
-    { title: 'Total Products', value: stats.totalProducts || 0, icon: <InventoryIcon />, color: '#6366F1' },
-    { title: 'Total Quantity', value: stats.totalQuantity || 0, icon: <CategoryIcon />, color: '#8B5CF6' },
-    { title: "Today's Sales", value: formatCurrency(stats.todaySales), icon: <SalesIcon />, color: '#0EA5E9' },
-    { title: "Today's Purchase", value: formatCurrency(stats.todayPurchase), icon: <PurchaseIcon />, color: '#F59E0B' },
-    { title: "Today's Profit", value: formatCurrency(stats.todayProfit), icon: <ProfitIcon />, color: '#10B981' },
-    { title: "Today's Loss", value: formatCurrency(stats.todayLoss), icon: <LossIcon />, color: '#EF4444' },
-    { title: 'Pending Credit', value: formatCurrency(stats.pendingCredit), icon: <CreditIcon />, color: '#F97316' },
-    { title: 'Pending Customers', value: stats.pendingCustomers || 0, icon: <CustomerIcon />, color: '#EC4899' },
-    { title: 'Stock Value', value: formatCurrency(stats.stockValue), icon: <StockValueIcon />, color: '#14B8A6' },
-    { title: 'Low Stock Items', value: stats.lowStockItems || 0, icon: <LowStockIcon />, color: '#F59E0B' },
-    { title: 'Out of Stock', value: stats.outOfStock || 0, icon: <OutOfStockIcon />, color: '#EF4444' },
-    { title: "Today's Bills", value: stats.todayBills || 0, icon: <BillIcon />, color: '#6366F1' },
-    { title: 'Monthly Sales', value: formatCurrency(stats.monthlySales), icon: <MonthlyIcon />, color: '#0EA5E9' },
+    { title: 'Expense', value: formatCurrency(stats.totalExpenses), icon: <LossIcon />, color: '#EF4444' },
+    {
+      title: 'Pending Collections from customers',
+      value: formatCurrency(stats.pendingCollection),
+      icon: <CreditIcon />,
+      color: '#F59E0B',
+      detailType: 'pendingCollections',
+      modalTitle: 'Pending Collections Details',
+    },
+    {
+      title: 'Total Products',
+      value: stats.totalProducts || 0,
+      icon: <InventoryIcon />,
+      color: '#6366F1',
+      detailType: 'totalProducts',
+      modalTitle: 'Active Products',
+    },
+    {
+      title: 'Total Quantity',
+      value: stats.totalQuantity || 0,
+      icon: <CategoryIcon />,
+      color: '#8B5CF6',
+      detailType: 'totalQuantity',
+      modalTitle: 'Stock Quantity Breakdown',
+    },
+    {
+      title: 'Total Quantity Sold',
+      value: stats.totalQuantitySold || 0,
+      icon: <SalesIcon />,
+      color: '#EC4899',
+      detailType: 'totalQuantitySold',
+      modalTitle: 'Total Quantity Sold Breakdown',
+    },
+    { title: 'Total Sales', value: formatCurrency(stats.totalSales), icon: <SalesIcon />, color: '#0EA5E9' },
+    { title: 'Total Profit', value: formatCurrency(stats.totalProfit), icon: <ProfitIcon />, color: '#10B981' },
+    { title: 'Total Purchase', value: formatCurrency(stats.totalPurchase), icon: <PurchaseIcon />, color: '#F59E0B' },
+    {
+      title: 'Low Stock Items',
+      value: stats.lowStockItems || 0,
+      icon: <LowStockIcon />,
+      color: '#F59E0B',
+      detailType: 'lowStockItems',
+      modalTitle: 'Low Stock Items Alert',
+    },
     { title: 'Monthly Profit', value: formatCurrency(stats.monthlyProfit), icon: <MonthlyProfitIcon />, color: '#10B981' },
+    { title: 'Monthly Sales', value: formatCurrency(stats.monthlySales), icon: <MonthlyIcon />, color: '#0EA5E9' },
+    { title: 'Monthly Purchase', value: formatCurrency(stats.monthlyPurchase), icon: <PurchaseIcon />, color: '#8B5CF6' },
   ];
 
   return (
@@ -210,7 +389,11 @@ const Dashboard = () => {
       <Grid container spacing={2.5}>
         {statCardsData.map((stat, index) => (
           <Grid item xs={12} sm={6} md={4} lg={3} xl={2.4} key={index}>
-            <StatCard {...stat} isLoading={statsLoading} />
+            <StatCard
+              {...stat}
+              isLoading={statsLoading}
+              onClick={stat.detailType ? () => handleOpenModal(stat.detailType, stat.modalTitle) : undefined}
+            />
           </Grid>
         ))}
       </Grid>
@@ -249,170 +432,90 @@ const Dashboard = () => {
                         <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={alpha('#94A3B8', 0.1)} />
-                    <XAxis
-                      dataKey="date"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#94A3B8', fontSize: 10 }}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#94A3B8', fontSize: 10 }}
-                      tickFormatter={(v) => `₹${v}`}
-                    />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                    <XAxis dataKey="date" stroke="#64748B" fontSize={12} tickLine={false} />
+                    <YAxis stroke="#64748B" fontSize={12} tickLine={false} tickFormatter={(val) => `₹${val/1000}k`} />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1E293B',
-                        borderColor: alpha('#64748B', 0.2),
-                        borderRadius: 8,
-                        color: '#F1F5F9',
-                      }}
-                      formatter={(value) => [`₹${value.toLocaleString('en-IN')}`]}
+                      formatter={(val) => [formatCurrency(val), '']}
+                      contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                     />
-                    <Legend verticalAlign="top" height={36} iconType="circle" />
-                    <Area
-                      type="monotone"
-                      dataKey="sales"
-                      name="Sales"
-                      stroke="#0EA5E9"
-                      fillOpacity={1}
-                      fill="url(#colorSales)"
-                      strokeWidth={2}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="purchase"
-                      name="Purchase"
-                      stroke="#F59E0B"
-                      fillOpacity={1}
-                      fill="url(#colorPurchase)"
-                      strokeWidth={2}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="profit"
-                      name="Profit"
-                      stroke="#10B981"
-                      fillOpacity={1}
-                      fill="url(#colorProfit)"
-                      strokeWidth={2}
-                    />
+                    <Legend />
+                    <Area type="monotone" dataKey="sales" name="Sales" stroke="#0EA5E9" fillOpacity={1} fill="url(#colorSales)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="purchase" name="Purchase" stroke="#F59E0B" fillOpacity={1} fill="url(#colorPurchase)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="profit" name="Profit" stroke="#10B981" fillOpacity={1} fill="url(#colorProfit)" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               </Box>
             ) : (
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: 300,
-                  borderRadius: 2,
-                  backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.05),
-                  border: (theme) => `1px dashed ${alpha(theme.palette.primary.main, 0.2)}`,
-                }}
-              >
-                <Typography color="text.secondary">No chart data available yet</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
+                <Typography color="text.secondary">No chart data available</Typography>
               </Box>
             )}
           </Card>
         </Grid>
 
         <Grid item xs={12} lg={4}>
-          <Card sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <Card sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" fontWeight={700} gutterBottom>
               Recent Activities
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Track latest adjustments and changes in the store.
+              Latest actions across your application.
             </Typography>
 
             {activitiesLoading ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <Box key={i} sx={{ display: 'flex', gap: 2 }}>
-                    <Skeleton variant="circular" width={40} height={40} />
-                    <Box sx={{ flexGrow: 1 }}>
-                      <Skeleton variant="text" width="60%" height={20} />
-                      <Skeleton variant="text" width="40%" height={15} />
-                    </Box>
-                  </Box>
+                  <Skeleton key={i} height={60} sx={{ my: 1 }} />
                 ))}
               </Box>
             ) : activities && activities.length > 0 ? (
-              <List sx={{ p: 0, flexGrow: 1, overflowY: 'auto', maxHeight: 350 }}>
-                {activities.map((activity, index) => {
-                  const config = getActivityConfig(activity.action);
-                  const userDetail = activity.userId 
-                    ? `${activity.userId.fullName} (${activity.userId.role})` 
-                    : activity.userName || 'System';
-
+              <List sx={{ width: '100%', padding: 0 }}>
+                {activities.map((act, idx) => {
+                  const config = getActivityConfig(act.action);
                   return (
-                    <React.Fragment key={activity._id || index}>
+                    <React.Fragment key={act._id || idx}>
                       <ListItem alignItems="flex-start" sx={{ px: 0, py: 1.5 }}>
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: config.bgColor, color: config.color, borderRadius: '10px' }}>
+                        <ListItemAvatar sx={{ minWidth: 48 }}>
+                          <Avatar sx={{ bgcolor: config.bgColor, color: config.color, width: 36, height: 36 }}>
                             {config.icon}
                           </Avatar>
                         </ListItemAvatar>
                         <ListItemText
                           primary={
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                              <Typography variant="subtitle2" fontWeight={600} color="text.primary">
-                                {activity.description || `${activity.action} ${activity.resource}`}
-                              </Typography>
-                              <Chip
-                                label={activity.action}
-                                size="small"
-                                sx={{
-                                  fontSize: '0.65rem',
-                                  fontWeight: 700,
-                                  height: 18,
-                                  bgcolor: config.bgColor,
-                                  color: config.color,
-                                  border: `1px solid ${alpha(config.color, 0.3)}`,
-                                }}
-                              />
-                            </Box>
+                            <Typography variant="body2" fontWeight={600} color="text.primary">
+                              {act.details || act.action}
+                            </Typography>
                           }
                           secondary={
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                By {userDetail}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {dayjs(activity.createdAt).fromNow()}
-                              </Typography>
-                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {act.userId?.fullName ? `${act.userId.fullName} • ` : ''}
+                              {dayjs(act.createdAt).fromNow()}
+                            </Typography>
                           }
                         />
                       </ListItem>
-                      {index < activities.length - 1 && <Divider variant="inset" component="li" sx={{ ml: 7, borderColor: alpha('#64748B', 0.1) }} />}
+                      {idx < activities.length - 1 && <Divider component="li" light />}
                     </React.Fragment>
                   );
                 })}
               </List>
             ) : (
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexGrow: 1,
-                  minHeight: 250,
-                  borderRadius: 2,
-                  backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.05),
-                  border: (theme) => `1px dashed ${alpha(theme.palette.primary.main, 0.2)}`,
-                }}
-              >
-                <Typography color="text.secondary">No recent activities logged</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 250 }}>
+                <Typography color="text.secondary">No recent activities</Typography>
               </Box>
             )}
           </Card>
         </Grid>
       </Grid>
+
+      {/* Detail Modal Dialog */}
+      <DashboardDetailModal
+        open={activeModal.open}
+        onClose={handleCloseModal}
+        detailType={activeModal.type}
+        title={activeModal.title}
+      />
     </Box>
   );
 };

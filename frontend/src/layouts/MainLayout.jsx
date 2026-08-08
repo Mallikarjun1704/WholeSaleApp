@@ -88,6 +88,7 @@ const MainLayout = () => {
     { text: 'Investments', icon: <CapitalIcon />, path: '/investments' },
     { text: 'Expenses', icon: <ExpenseIcon />, path: '/expenses' },
     { text: 'Price Comparison', icon: <CompareIcon />, path: '/wholesaler' },
+    { text: 'User Management', icon: <AdminIcon />, path: '/settings/users', adminOnly: true },
   ];
 
   const settingsItems = [

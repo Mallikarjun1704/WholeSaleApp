@@ -36,6 +36,14 @@ export const billingApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Bills', 'Customers', 'Dashboard'],
     }),
+    updateBill: builder.mutation({
+      query: ({ id, ...data }) => ({
+        url: `/billing/${id}`,
+        method: 'PUT',
+        body: data,
+      }),
+      invalidatesTags: ['Bills', 'Customers', 'Dashboard'],
+    }),
   }),
 });
 
@@ -45,4 +53,5 @@ export const {
   useGetBillsByCustomerQuery,
   useCreateBillMutation,
   useUpdateBillPaymentMutation,
+  useUpdateBillMutation,
 } = billingApi;

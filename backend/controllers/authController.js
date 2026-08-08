@@ -211,28 +211,36 @@ const updatePassword = asyncHandler(async (req, res) => {
  * @access  Public (only works if no admin exists)
  */
 const setup = asyncHandler(async (req, res) => {
-  // Check if setup is already complete
-  const existingAdmin = await User.findOne({ role: 'admin' });
-
-  if (existingAdmin) {
-    throw new AppError('Setup is already complete. Admin account exists.', 400);
-  }
-
   const { username, password, fullName, phone, email, shopDetails } = req.body;
 
   if (!username || !password || !fullName) {
     throw new AppError('Username, password, and full name are required', 400);
   }
 
-  // Create admin user
-  const admin = await User.create({
-    username,
-    password,
-    fullName,
-    role: 'admin',
-    phone,
-    email,
-  });
+  let admin = await User.findOne({ role: 'admin' });
+  const isUpdate = Boolean(admin);
+
+  if (admin) {
+    // Update existing admin account
+    admin.username = username.toLowerCase();
+    admin.password = password;
+    admin.fullName = fullName;
+    if (phone !== undefined) admin.phone = phone;
+    if (email !== undefined) admin.email = email;
+    admin.isActive = true;
+    await admin.save();
+  } else {
+    // Create new admin user
+    admin = await User.create({
+      username: username.toLowerCase(),
+      password,
+      fullName,
+      role: 'admin',
+      phone: phone || '',
+      email: email || '',
+      isActive: true,
+    });
+  }
 
   // Update shop settings if provided
   if (shopDetails) {
@@ -254,15 +262,15 @@ const setup = asyncHandler(async (req, res) => {
   await logActivity({
     userId: admin._id,
     userName: admin.fullName,
-    action: 'CREATE',
+    action: isUpdate ? 'UPDATE' : 'CREATE',
     resource: 'User',
     resourceId: admin._id,
-    description: 'Initial admin account created during setup',
+    description: isUpdate ? 'Admin account updated during setup' : 'Initial admin account created during setup',
   });
 
-  res.status(201).json({
+  res.status(200).json({
     success: true,
-    message: 'Setup complete. Admin account created.',
+    message: 'Setup complete. Admin account configured.',
     data: {
       user: {
         id: admin._id,
@@ -282,13 +290,97 @@ const setup = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const checkSetup = asyncHandler(async (req, res) => {
-  const settings = await Setting.getSettings();
   const adminExists = await User.findOne({ role: 'admin' });
+  const anyUserExists = await User.findOne({});
 
+  // If any user/admin exists, setup is complete
+  if (adminExists || anyUserExists) {
+    await Setting.updateSettings({ isSetupComplete: true });
+    return res.status(200).json({
+      success: true,
+      data: { isSetupComplete: true },
+    });
+  }
+
+  const settings = await Setting.getSettings();
   res.status(200).json({
     success: true,
     data: {
-      isSetupComplete: settings.isSetupComplete && !!adminExists,
+      isSetupComplete: settings.isSetupComplete,
+    },
+  });
+});
+
+/**
+ * @desc    Get all system users
+ * @route   GET /api/auth/users
+ * @access  Private (Admin)
+ */
+const getUsers = asyncHandler(async (req, res) => {
+  const users = await User.find().select('-password').sort({ createdAt: -1 });
+  res.status(200).json({ success: true, data: users });
+});
+
+/**
+ * @desc    Toggle shopkeeper user access
+ * @route   PUT /api/auth/users/:id/toggle-access
+ * @access  Private (Admin)
+ */
+const toggleUserAccess = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  if (user.role === 'admin' && user.isActive) {
+    const adminCount = await User.countDocuments({ role: 'admin', isActive: true });
+    if (adminCount <= 1) {
+      throw new AppError('Cannot deactivate the last active administrator account', 400);
+    }
+  }
+
+  user.isActive = !user.isActive;
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    message: `User access ${user.isActive ? 'granted' : 'revoked'} successfully`,
+    data: user,
+  });
+});
+
+/**
+ * @desc    Create new shopkeeper / staff user
+ * @route   POST /api/auth/users
+ * @access  Private (Admin)
+ */
+const createUser = asyncHandler(async (req, res) => {
+  const { username, password, fullName, phone, email, role, isActive } = req.body;
+
+  const existingUser = await User.findOne({ username: username.toLowerCase() });
+  if (existingUser) {
+    throw new AppError('Username already exists', 400);
+  }
+
+  const newUser = await User.create({
+    username: username.toLowerCase(),
+    password,
+    fullName,
+    phone: phone || '',
+    email: email || '',
+    role: role || 'staff',
+    isActive: isActive !== undefined ? Boolean(isActive) : false,
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'User created successfully',
+    data: {
+      id: newUser._id,
+      username: newUser.username,
+      fullName: newUser.fullName,
+      role: newUser.role,
+      isActive: newUser.isActive,
     },
   });
 });
@@ -301,4 +393,7 @@ module.exports = {
   updatePassword,
   setup,
   checkSetup,
+  getUsers,
+  toggleUserAccess,
+  createUser,
 };

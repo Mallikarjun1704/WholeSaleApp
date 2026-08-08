@@ -26,19 +26,10 @@ const formatINR = (val) => {
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
   const d = new Date(dateStr);
-  return (
-    d.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }) +
-    ' ' +
-    d.toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    })
-  );
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 /**
@@ -304,12 +295,22 @@ const generateBillPdfStream = (bill, settings = {}) => {
                 : { text: '' },
             ],
           },
-          // Right: Subtotal, GST, Discount, Grand Total
+          // Right: Subtotal, Total Qty, GST, Packing Charges, Grand Total
           {
             width: 210,
             table: {
-              widths: [90, '*'],
+              widths: [100, '*'],
               body: [
+                [
+                  { text: 'Total Quantity:', fontSize: 9, color: '#475569', alignment: 'right' },
+                  {
+                    text: `${(bill.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)} Units`,
+                    fontSize: 9,
+                    color: '#0F172A',
+                    alignment: 'right',
+                    bold: true,
+                  },
+                ],
                 [
                   { text: 'Subtotal:', fontSize: 9, color: '#475569', alignment: 'right' },
                   { text: formatINR(bill.subtotal), fontSize: 9, color: '#0F172A', alignment: 'right', bold: true },
@@ -320,8 +321,8 @@ const generateBillPdfStream = (bill, settings = {}) => {
                 ],
                 bill.discount > 0
                   ? [
-                      { text: 'Discount:', fontSize: 9, color: '#16A34A', alignment: 'right' },
-                      { text: `- ${formatINR(bill.discount)}`, fontSize: 9, color: '#16A34A', alignment: 'right', bold: true },
+                      { text: 'Packing Charges:', fontSize: 9, color: '#475569', alignment: 'right' },
+                      { text: `+ ${formatINR(bill.discount)}`, fontSize: 9, color: '#0F172A', alignment: 'right', bold: true },
                     ]
                   : null,
                 [

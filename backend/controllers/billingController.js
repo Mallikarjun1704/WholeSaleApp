@@ -105,8 +105,8 @@ const createBill = asyncHandler(async (req, res) => {
     });
   }
 
-  const discountAmount = Number(discount) || 0;
-  const finalAmount = subtotal + totalGst - discountAmount;
+  const packingCharges = Number(discount) || 0;
+  const finalAmount = subtotal + totalGst + packingCharges;
 
   // Calculate initial paid amount & status
   const initialPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
@@ -126,7 +126,7 @@ const createBill = asyncHandler(async (req, res) => {
     customer: customer._id,
     items: processedItems,
     subtotal,
-    discount: discountAmount,
+    discount: packingCharges,
     gstAmount: totalGst,
     finalAmount,
     paidAmount: initialPaid,
@@ -340,11 +340,195 @@ const getBillPdf = asyncHandler(async (req, res) => {
   pdfStream.end();
 });
 
+/**
+ * @desc    Edit bill details (Admin only, allowed until fully paid)
+ * @route   PUT /api/billing/:id
+ * @access  Private (Admin)
+ */
+const updateBill = asyncHandler(async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Only Admin can edit bills' });
+  }
+
+  const bill = await Bill.findById(req.params.id);
+  if (!bill) {
+    return res.status(404).json({ success: false, message: 'Bill not found' });
+  }
+
+  if (bill.status === 'Paid') {
+    return res.status(400).json({
+      success: false,
+      message: 'This bill has been fully paid. Fully paid bills cannot be edited.',
+    });
+  }
+
+  const { discount, billDate, items } = req.body;
+
+  // If items array is supplied in update payload, handle stock reconciliation and items update
+  if (items !== undefined && Array.isArray(items)) {
+    if (items.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one item is required in the bill' });
+    }
+
+    // Step 1: Revert previous stock deductions for old items
+    for (const oldItem of bill.items) {
+      await Product.findByIdAndUpdate(oldItem.product, {
+        $inc: { stock: oldItem.quantity },
+      });
+
+      if (oldItem.batch) {
+        await Batch.findByIdAndUpdate(oldItem.batch, {
+          $inc: { remainingQty: oldItem.quantity },
+        });
+      } else {
+        const lastBatch = await Batch.findOne({ product: oldItem.product }).sort({ createdAt: -1 });
+        if (lastBatch) {
+          lastBatch.remainingQty += oldItem.quantity;
+          await lastBatch.save();
+        }
+      }
+    }
+
+    // Step 2: Validate and process new items list
+    const processedItems = [];
+    let newSubtotal = 0;
+    let newTotalGst = 0;
+
+    for (const item of items) {
+      const prodId = item.productId || item.product;
+      if (!prodId || !item.quantity || !item.sellingPrice) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each item requires product ID, quantity, and selling price',
+        });
+      }
+
+      const product = await Product.findById(prodId);
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message: `Product not found: ${prodId}`,
+        });
+      }
+
+      const qty = Number(item.quantity);
+      if (qty > product.stock) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock for "${product.name}". Available: ${product.stock}, Requested: ${qty}`,
+        });
+      }
+
+      const sellingPrice = Number(item.sellingPrice);
+      const taxableAmount = sellingPrice * qty;
+      const gstRate = item.gstRate !== undefined ? Number(item.gstRate) : 0;
+      const gstAmount = Math.round((taxableAmount * gstRate) / 100);
+      const itemTotal = taxableAmount + gstAmount;
+
+      // Find FIFO batch for purchase price reference
+      let purchasePrice = 0;
+      let batchRef = null;
+      const oldestBatch = await Batch.findOne({
+        product: product._id,
+        remainingQty: { $gt: 0 },
+      }).sort({ createdAt: 1 });
+
+      if (oldestBatch) {
+        purchasePrice = oldestBatch.purchasePrice;
+        batchRef = oldestBatch._id;
+      }
+
+      newSubtotal += taxableAmount;
+      newTotalGst += gstAmount;
+
+      processedItems.push({
+        product: product._id,
+        batch: batchRef,
+        name: product.name,
+        quantity: qty,
+        purchasePrice,
+        sellingPrice,
+        taxableAmount,
+        gstRate,
+        gstAmount,
+        total: itemTotal,
+      });
+    }
+
+    // Step 3: Deduct stock from products and batches for new processed items
+    for (const newItem of processedItems) {
+      await Product.findByIdAndUpdate(newItem.product, {
+        $inc: { stock: -newItem.quantity },
+      });
+
+      let remainingToDeduct = newItem.quantity;
+      const batches = await Batch.find({
+        product: newItem.product,
+        remainingQty: { $gt: 0 },
+      }).sort({ createdAt: 1 });
+
+      for (const batch of batches) {
+        if (remainingToDeduct <= 0) break;
+        const deductFromBatch = Math.min(batch.remainingQty, remainingToDeduct);
+        batch.remainingQty -= deductFromBatch;
+        await batch.save();
+        remainingToDeduct -= deductFromBatch;
+      }
+    }
+
+    bill.items = processedItems;
+    bill.subtotal = newSubtotal;
+    bill.gstAmount = newTotalGst;
+  }
+
+  const packingCharges = discount !== undefined ? Number(discount) : bill.discount;
+  const oldFinal = bill.finalAmount;
+  const newFinal = bill.subtotal + bill.gstAmount + packingCharges;
+  const diff = newFinal - oldFinal;
+
+  bill.discount = packingCharges;
+  bill.finalAmount = newFinal;
+  if (billDate) {
+    bill.billDate = new Date(billDate);
+  }
+
+  // Adjust payment status if needed
+  const paid = bill.paidAmount || 0;
+  if (paid >= newFinal) {
+    bill.status = 'Paid';
+    bill.paidDate = new Date();
+  } else if (paid > 0) {
+    bill.status = 'Partially Paid';
+  } else {
+    bill.status = 'Pending';
+  }
+
+  await bill.save();
+
+  // Adjust customer pending debt if total changed
+  if (diff !== 0 && bill.customer) {
+    await Customer.findByIdAndUpdate(bill.customer, {
+      $inc: { pendingCredit: diff },
+    });
+  }
+
+  const updatedBill = await Bill.findById(bill._id)
+    .populate('customer', 'shopName ownerName phone')
+    .populate('items.product', 'name sku');
+
+  res.status(200).json({
+    success: true,
+    message: 'Bill updated successfully',
+    data: updatedBill,
+  });
+});
+
 module.exports = {
   createBill,
   getBills,
   getBillById,
   getBillsByCustomer,
   updateBillPaymentStatus,
+  updateBill,
   getBillPdf,
 };

@@ -55,7 +55,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       const itemProfit = item.taxableAmount - costOfGoods;
       billProfit += itemProfit;
     }
-    billProfit -= (bill.discount || 0);
+    billProfit += (bill.discount || 0);
 
     if (billProfit > 0) {
       todayProfit += billProfit;
@@ -89,7 +89,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   // 9. Today's Bills Count
   const todayBillsCount = todayBills.length;
 
-  // 10. Monthly Sales & Profit
+  // 10. Monthly Sales & Profit & Purchase
   const monthlyBills = await Bill.find({
     createdAt: { $gte: startOfMonth },
     status: { $ne: 'Cancelled' },
@@ -104,9 +104,44 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       const itemProfit = item.taxableAmount - costOfGoods;
       billProfit += itemProfit;
     }
-    billProfit -= (bill.discount || 0);
+    billProfit += (bill.discount || 0);
     if (billProfit > 0) {
       monthlyProfit += billProfit;
+    }
+  }
+
+  const monthlyPurchasesList = await Purchase.find({
+    createdAt: { $gte: startOfMonth },
+  });
+  const monthlyPurchase = monthlyPurchasesList.reduce((sum, p) => sum + p.totalAmount, 0);
+
+  // All-time Totals (Sales, Purchase, Profit, Loss)
+  const totalSalesAgg = await Bill.aggregate([
+    { $match: { status: { $ne: 'Cancelled' } } },
+    { $group: { _id: null, total: { $sum: '$finalAmount' } } },
+  ]);
+  const totalSales = totalSalesAgg[0]?.total || 0;
+
+  const totalPurchaseAgg = await Purchase.aggregate([
+    { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+  ]);
+  const totalPurchase = totalPurchaseAgg[0]?.total || 0;
+
+  const allBills = await Bill.find({ status: { $ne: 'Cancelled' } });
+  let totalProfit = 0;
+  let totalLoss = 0;
+  for (const bill of allBills) {
+    let billProfit = 0;
+    for (const item of bill.items) {
+      const costOfGoods = (item.purchasePrice || 0) * item.quantity;
+      const itemProfit = (item.taxableAmount || 0) - costOfGoods;
+      billProfit += itemProfit;
+    }
+    billProfit += (bill.discount || 0);
+    if (billProfit > 0) {
+      totalProfit += billProfit;
+    } else if (billProfit < 0) {
+      totalLoss += Math.abs(billProfit);
     }
   }
 
@@ -148,16 +183,29 @@ const getDashboardStats = asyncHandler(async (req, res) => {
 
   // 15. Pending Collection: Total unpaid bill amounts from retail stores
   const pendingCollectionAgg = await Bill.aggregate([
-    { $match: { status: 'Pending' } },
-    { $group: { _id: null, total: { $sum: '$finalAmount' } } },
+    { $match: { status: { $in: ['Pending', 'Partially Paid'] } } },
+    { $group: { _id: null, total: { $sum: { $subtract: ['$finalAmount', { $ifNull: ['$paidAmount', 0] }] } } } },
   ]);
   const pendingCollection = pendingCollectionAgg[0]?.total || 0;
+
+  // 16. Total Quantity Sold (Sum of items quantity across all non-cancelled bills)
+  const totalQuantitySoldAgg = await Bill.aggregate([
+    { $match: { status: { $ne: 'Cancelled' } } },
+    { $unwind: '$items' },
+    { $group: { _id: null, totalQtySold: { $sum: '$items.quantity' } } },
+  ]);
+  const totalQuantitySold = totalQuantitySoldAgg[0]?.totalQtySold || 0;
 
   res.status(200).json({
     success: true,
     data: {
       totalProducts,
       totalQuantity,
+      totalQuantitySold,
+      totalSales: Math.round(totalSales),
+      totalPurchase: Math.round(totalPurchase),
+      totalProfit: Math.round(totalProfit),
+      totalLoss: Math.round(totalLoss),
       todaySales: Math.round(todaySales),
       todayPurchase: Math.round(todayPurchase),
       todayProfit: Math.round(todayProfit),
@@ -170,6 +218,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       todayBills: todayBillsCount,
       monthlySales: Math.round(monthlySales),
       monthlyProfit: Math.round(monthlyProfit),
+      monthlyPurchase: Math.round(monthlyPurchase),
       cashInHand: Math.round(cashInHand),
       pendingCollection: Math.round(pendingCollection),
       totalInvestments: Math.round(totalInvestments),
@@ -219,7 +268,7 @@ const getDashboardChartData = asyncHandler(async (req, res) => {
       const costOfGoods = item.purchasePrice * item.quantity;
       billProfit += item.taxableAmount - costOfGoods;
     }
-    billProfit -= (bill.discount || 0);
+    billProfit += (bill.discount || 0);
 
     if (dailyData[dateStr]) {
       dailyData[dateStr].sales += bill.finalAmount;
@@ -270,8 +319,112 @@ const getRecentActivities = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Get dashboard card detail items for popups
+ * @route   GET /api/dashboard/details/:type
+ * @access  Private
+ */
+const getDashboardDetails = asyncHandler(async (req, res) => {
+  const { type } = req.params;
+  let details = [];
+
+  switch (type) {
+    case 'pendingCollections':
+      details = await Bill.find({ status: { $ne: 'Cancelled' } })
+        .populate('customer', 'shopName name phone')
+        .sort({ createdAt: -1 });
+      // Filter bills that have unpaid/pending balance
+      details = details
+        .map((bill) => {
+          const paid = bill.paidAmount || 0;
+          const pending = bill.finalAmount - paid;
+          return {
+            id: bill._id,
+            invoiceNumber: bill.billNumber || bill.invoiceNumber || '-',
+            storeName: bill.customer?.shopName || bill.customer?.name || 'Retail Store',
+            phoneNumber: bill.customer?.phone || '-',
+            date: bill.createdAt,
+            totalAmount: bill.finalAmount,
+            paidAmount: paid,
+            pendingAmount: pending,
+            status: bill.status,
+          };
+        })
+        .filter((b) => b.pendingAmount > 0);
+      break;
+
+    case 'totalProducts':
+      details = await Product.find({ isActive: true }).sort({ name: 1 });
+      break;
+
+    case 'totalQuantity':
+      const qtyBills = await Bill.find({ status: { $ne: 'Cancelled' } })
+        .populate('customer', 'shopName name phone')
+        .sort({ createdAt: -1 });
+      details = qtyBills.map((bill) => {
+        const billQty = (bill.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0);
+        return {
+          id: bill._id,
+          invoiceNumber: bill.billNumber || bill.invoiceNumber || '-',
+          storeName: bill.customer?.shopName || bill.customer?.name || 'Retail Store',
+          totalQuantity: billQty,
+        };
+      });
+      break;
+
+    case 'totalQuantitySold':
+      const soldAgg = await Bill.aggregate([
+        { $match: { status: { $ne: 'Cancelled' } } },
+        { $unwind: '$items' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'items.product',
+            foreignField: '_id',
+            as: 'productInfo',
+          },
+        },
+        {
+          $group: {
+            _id: '$items.product',
+            name: {
+              $first: {
+                $ifNull: ['$items.name', { $arrayElemAt: ['$productInfo.name', 0] }],
+              },
+            },
+            stock: { $sum: '$items.quantity' },
+          },
+        },
+        { $sort: { stock: -1 } },
+      ]);
+      details = soldAgg;
+      break;
+
+    case 'pendingCredit':
+    case 'pendingCustomers':
+      details = await Customer.find({ pendingCredit: { $gt: 0 }, isActive: true }).sort({ pendingCredit: -1 });
+      break;
+
+    case 'lowStockItems':
+      details = await Product.find({
+        isActive: true,
+        $expr: { $and: [{ $gt: ['$stock', 0] }, { $lte: ['$stock', '$lowStockThreshold'] }] },
+      }).sort({ stock: 1 });
+      break;
+
+    default:
+      return res.status(400).json({ success: false, message: 'Invalid detail type requested' });
+  }
+
+  res.status(200).json({
+    success: true,
+    data: details,
+  });
+});
+
 module.exports = {
   getDashboardStats,
   getDashboardChartData,
   getRecentActivities,
+  getDashboardDetails,
 };

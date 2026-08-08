@@ -7,6 +7,7 @@ const {
   getPurchasesBySupplier,
   getPurchaseById,
   updatePurchasePaymentStatus,
+  updatePurchase,
   getNextInvoiceNumber,
 } = require('../controllers/purchaseController');
 
@@ -19,6 +20,7 @@ router.get('/', getPurchases);
 router.get('/next-invoice', getNextInvoiceNumber);
 router.get('/supplier/:supplierId', getPurchasesBySupplier);
 router.get('/:id', getPurchaseById);
+router.put('/:id', authorize('admin'), updatePurchase);
 router.patch('/:id/payment', authorize('admin'), updatePurchasePaymentStatus);
 
 module.exports = router;

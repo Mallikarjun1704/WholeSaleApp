@@ -14,6 +14,10 @@ export const dashboardApi = apiSlice.injectEndpoints({
       query: () => '/dashboard/activities',
       providesTags: ['ActivityLogs'],
     }),
+    getDashboardDetails: builder.query({
+      query: (type) => `/dashboard/details/${type}`,
+      providesTags: ['Dashboard'],
+    }),
   }),
 });
 
@@ -21,4 +25,5 @@ export const {
   useGetDashboardStatsQuery,
   useGetDashboardChartsQuery,
   useGetRecentActivitiesQuery,
+  useGetDashboardDetailsQuery,
 } = dashboardApi;
