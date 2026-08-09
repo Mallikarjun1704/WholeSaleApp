@@ -12,12 +12,21 @@ const { generateBillPdfStream } = require('../utils/pdfGenerator');
 const generateBillNumber = async () => {
   const today = new Date();
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-  const count = await Bill.countDocuments({
-    createdAt: {
-      $gte: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-    },
-  });
-  return `TM-${dateStr}-${String(count + 1).padStart(3, '0')}`;
+  const totalCount = await Bill.countDocuments();
+  let counter = totalCount + 1;
+  let unique = false;
+  let billNum = '';
+
+  while (!unique) {
+    billNum = `TM-${dateStr}-${String(counter).padStart(3, '0')}`;
+    const exists = await Bill.findOne({ billNumber: billNum });
+    if (!exists) {
+      unique = true;
+    } else {
+      counter++;
+    }
+  }
+  return billNum;
 };
 
 /**
