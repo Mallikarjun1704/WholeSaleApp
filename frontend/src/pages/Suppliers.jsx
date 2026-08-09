@@ -60,23 +60,26 @@ const QuickAddProductDialog = ({ open, onClose, onCreated }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [form, setForm] = useState({
     name: '',
-    brand: '',
-    category: 'Mobile',
     model: '',
-    sellingPrice: '',
     lowStockThreshold: 5,
   });
 
   const handleSubmit = async () => {
     setErrorMsg('');
-    if (!form.name.trim() || !form.sellingPrice) {
-      setErrorMsg('Product name and selling price are required.');
+    if (!form.name.trim()) {
+      setErrorMsg('Product name is required.');
       return;
     }
     try {
+      // Auto-generate SKU from name
+      const skuBase = form.name.trim().toUpperCase().replace(/\s+/g, '-').replace(/[^A-Z0-9\-]/g, '').slice(0, 20);
+      const skuSuffix = Math.floor(1000 + Math.random() * 9000);
+      const sku = `${skuBase}-${skuSuffix}`;
+
       const res = await createProduct({
         ...form,
-        sellingPrice: Number(form.sellingPrice),
+        sku,
+        sellingPrice: 0,
         stock: 0, // Stock starts at 0, purchase bill will increment it
       }).unwrap();
 
@@ -101,31 +104,17 @@ const QuickAddProductDialog = ({ open, onClose, onCreated }) => {
             fullWidth size="small"
           />
           <TextField
-            label="Brand"
-            value={form.brand}
-            onChange={(e) => setForm({ ...form, brand: e.target.value })}
-            placeholder="e.g. Apple"
-            fullWidth size="small"
-          />
-          <TextField
             label="Model Number"
             value={form.model}
             onChange={(e) => setForm({ ...form, model: e.target.value })}
             placeholder="e.g. A3089"
             fullWidth size="small"
           />
-          <TextField
-            label="Wholesale Selling Price ₹ *"
-            type="number"
-            value={form.sellingPrice}
-            onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
-            fullWidth size="small"
-          />
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5 }}>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={handleSubmit} disabled={isLoading || !form.name.trim() || !form.sellingPrice}>
+        <Button variant="contained" onClick={handleSubmit} disabled={isLoading || !form.name.trim()}>
           {isLoading ? 'Creating...' : 'Create Model'}
         </Button>
       </DialogActions>
@@ -155,8 +144,8 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
   const generateAutoInvoice = async () => {
     try {
       const res = await fetchNextInvoice().unwrap();
-      if (res?.data?.nextInvoiceNumber) {
-        setForm((prev) => ({ ...prev, invoiceNumber: res.data.nextInvoiceNumber }));
+      if (res?.data?.invoiceNumber) {
+        setForm((prev) => ({ ...prev, invoiceNumber: res.data.invoiceNumber }));
       }
     } catch (err) {
       console.error('Failed to get next invoice number', err);

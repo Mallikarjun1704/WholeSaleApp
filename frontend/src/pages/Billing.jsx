@@ -484,10 +484,23 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
         return (
           <Grid container spacing={1.5} key={i} sx={{ mb: 1.5, alignItems: 'center' }}>
             <Grid item xs={4}>
-              <TextField select label="Select Mobile Model *" value={item.productId} onChange={(e) => updateItem(i, 'productId', e.target.value)} fullWidth size="small" SelectProps={{ native: true }}>
-                <option value="">Select mobile...</option>
-                {products.map(p => <option key={p._id} value={p._id}>{p.name} ({p.sku}) [Stock: {p.stock}]{p.stock === 0 ? ' - (Out of Stock)' : ''}</option>)}
-              </TextField>
+              <Autocomplete
+                  options={products.filter(p => p.stock > 0).sort((a, b) => (a.name || '').localeCompare(b.name || ''))}
+                  getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name} (${option.sku}) [Stock: ${option.stock}]`}
+                  value={products.find(p => p._id === item.productId) || null}
+                  onChange={(event, newValue) => {
+                    updateItem(i, 'productId', newValue ? newValue._id : '');
+                  }}
+                  isOptionEqualToValue={(option, val) => option._id === (val?._id || val)}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Select Mobile Model *" size="small" fullWidth placeholder="Type to search mobile..." />
+                  )}
+                  renderOption={(props, option) => (
+                    <li {...props} key={option._id}>
+                      {option.name} ({option.sku}) [Stock: {option.stock}]
+                    </li>
+                  )}
+                />
             </Grid>
             <Grid item xs={2}>
               <TextField

@@ -429,6 +429,7 @@ const updatePurchase = asyncHandler(async (req, res) => {
 
       processedItems.push({
         product: product._id,
+        name: product.name,
         quantity: qty,
         purchasePrice: price,
         imeiNumbers: imeiArr,
