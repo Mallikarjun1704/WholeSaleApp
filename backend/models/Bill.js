@@ -46,6 +46,31 @@ const billItemSchema = new mongoose.Schema({
   },
 });
 
+const paymentLogSchema = new mongoose.Schema({
+  amount: {
+    type: Number,
+    required: true,
+  },
+  paymentDate: {
+    type: Date,
+    default: Date.now,
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['Cash', 'Card', 'UPI', 'Credit', 'Net Banking', 'Cheque', 'Mixed'],
+    default: 'Cash',
+  },
+  note: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  recordedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+});
+
 const billSchema = new mongoose.Schema(
   {
     billNumber: {
@@ -98,6 +123,7 @@ const billSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    payments: [paymentLogSchema],
   },
   {
     timestamps: true,

@@ -1,5 +1,6 @@
 const Customer = require('../models/Customer');
 const Bill = require('../models/Bill');
+const ActivityLog = require('../models/ActivityLog');
 const { asyncHandler } = require('../middleware/errorHandler');
 
 /**
@@ -151,10 +152,113 @@ const deleteCustomer = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Record bulk payment for a customer (distribute FIFO across unpaid bills)
+ * @route   POST /api/customers/:id/payment
+ * @access  Private/Admin
+ */
+const recordCustomerPayment = asyncHandler(async (req, res) => {
+  const { amount, paymentMethod, note, paymentDate } = req.body;
+  const customerId = req.params.id;
+
+  const customer = await Customer.findById(customerId);
+  if (!customer) {
+    return res.status(404).json({ success: false, message: 'Customer not found' });
+  }
+
+  const payAmount = Number(amount);
+  if (isNaN(payAmount) || payAmount <= 0) {
+    return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
+  }
+
+  // Find all unpaid / partially paid bills for this customer sorted by billDate/createdAt ASC (FIFO)
+  const unpaidBills = await Bill.find({
+    customer: customerId,
+    status: { $in: ['Pending', 'Partially Paid'] },
+  }).sort({ billDate: 1, createdAt: 1 });
+
+  if (unpaidBills.length === 0) {
+    return res.status(400).json({ success: false, message: 'No outstanding bills found for this customer' });
+  }
+
+  let remainingToDistribute = payAmount;
+  let totalDistributed = 0;
+  const updatedBills = [];
+  const pDate = paymentDate ? new Date(paymentDate) : new Date();
+  const pMethod = paymentMethod || 'Cash';
+
+  for (const bill of unpaidBills) {
+    if (remainingToDistribute <= 0) break;
+
+    const currentPaid = bill.paidAmount || 0;
+    const billOwed = Math.max(0, bill.finalAmount - currentPaid);
+
+    if (billOwed <= 0) continue;
+
+    const alloc = Math.min(billOwed, remainingToDistribute);
+    const newPaid = currentPaid + alloc;
+    let newStatus = 'Pending';
+
+    if (newPaid >= bill.finalAmount) {
+      newStatus = 'Paid';
+      bill.paidDate = pDate;
+    } else if (newPaid > 0) {
+      newStatus = 'Partially Paid';
+    }
+
+    bill.paidAmount = newPaid;
+    bill.status = newStatus;
+    bill.paymentMethod = pMethod;
+
+    if (!bill.payments) {
+      bill.payments = [];
+    }
+    bill.payments.push({
+      amount: alloc,
+      paymentDate: pDate,
+      paymentMethod: pMethod,
+      note: note || '',
+      recordedBy: req.user?._id,
+    });
+
+    await bill.save();
+
+    totalDistributed += alloc;
+    remainingToDistribute -= alloc;
+    updatedBills.push(bill);
+  }
+
+  // Recalculate customer's total pendingCredit based on remaining unpaid bills
+  const remainingBillsAgg = await Bill.aggregate([
+    { $match: { customer: customer._id, status: { $in: ['Pending', 'Partially Paid'] } } },
+    { $group: { _id: null, totalPending: { $sum: { $subtract: ['$finalAmount', { $ifNull: ['$paidAmount', 0] }] } } } },
+  ]);
+  const newPendingCredit = remainingBillsAgg[0]?.totalPending || 0;
+  customer.pendingCredit = Math.max(0, Math.round(newPendingCredit));
+  await customer.save();
+
+  // Log activity
+  await ActivityLog.create({
+    userId: req.user?._id,
+    action: 'PAYMENT',
+    details: `Bulk payment of ₹${totalDistributed} recorded for store "${customer.shopName}"`,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      customer,
+      totalDistributed,
+      updatedBills,
+    },
+  });
+});
+
 module.exports = {
   getCustomers,
   getCustomerById,
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  recordCustomerPayment,
 };

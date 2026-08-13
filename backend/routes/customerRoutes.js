@@ -7,6 +7,7 @@ const {
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  recordCustomerPayment,
 } = require('../controllers/customerController');
 
 // All customer routes require authentication
@@ -17,6 +18,7 @@ router.get('/:id', getCustomerById);
 
 // Admin-only write operations
 router.post('/', authorize('admin'), createCustomer);
+router.post('/:id/payment', authorize('admin'), recordCustomerPayment);
 router.put('/:id', authorize('admin'), updateCustomer);
 router.delete('/:id', authorize('admin'), deleteCustomer);
 

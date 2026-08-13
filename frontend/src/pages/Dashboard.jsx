@@ -52,6 +52,8 @@ import {
   Settings as SettingsIcon,
   Error as AlertIcon,
   Close as CloseIcon,
+  MonetizationOn as CommissionIcon,
+  DirectionsCar as TravelIcon,
 } from '@mui/icons-material';
 import {
   AreaChart,
@@ -212,21 +214,12 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
                 <TableRow>
                   {detailType === 'pendingCollections' && (
                     <>
-                      <TableCell sx={{ fontWeight: 700 }}>Invoice Number</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>StoreName</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>PhoneNumber</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700 }}>Total Amount</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700 }}>Pending Amount</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Shop Name</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Phone Number</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Total Outstanding Amount</TableCell>
                     </>
                   )}
-                  {detailType === 'totalQuantity' && (
-                    <>
-                      <TableCell sx={{ fontWeight: 700 }}>Invoice Number</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Store Name</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700 }}>Total Quantity</TableCell>
-                    </>
-                  )}
-                  {(detailType === 'totalProducts' || detailType === 'totalQuantitySold') && (
+                  {(detailType === 'totalProducts' || detailType === 'totalQuantity' || detailType === 'totalQuantitySold') && (
                     <>
                       <TableCell sx={{ fontWeight: 700 }}>Product Name</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700 }}>
@@ -248,25 +241,14 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
                   <TableRow key={row._id || row.id || idx} hover>
                     {detailType === 'pendingCollections' && (
                       <>
-                        <TableCell><strong>{row.invoiceNumber}</strong></TableCell>
-                        <TableCell>{row.storeName}</TableCell>
+                        <TableCell><strong>{row.storeName}</strong></TableCell>
                         <TableCell>{row.phoneNumber}</TableCell>
-                        <TableCell align="right">{formatCurrency(row.totalAmount)}</TableCell>
                         <TableCell align="right" sx={{ color: 'error.main', fontWeight: 700 }}>
-                          {formatCurrency(row.pendingAmount)}
+                          {formatCurrency(row.totalOutstanding)}
                         </TableCell>
                       </>
                     )}
-                    {detailType === 'totalQuantity' && (
-                      <>
-                        <TableCell><strong>{row.invoiceNumber}</strong></TableCell>
-                        <TableCell>{row.storeName}</TableCell>
-                        <TableCell align="center" sx={{ fontWeight: 700 }}>
-                          {row.totalQuantity}
-                        </TableCell>
-                      </>
-                    )}
-                    {(detailType === 'totalProducts' || detailType === 'totalQuantitySold') && (
+                    {(detailType === 'totalProducts' || detailType === 'totalQuantity' || detailType === 'totalQuantitySold') && (
                       <>
                         <TableCell><strong>{row.name || 'Unknown Product'}</strong></TableCell>
                         <TableCell align="center" sx={{ fontWeight: 700 }}>
@@ -326,7 +308,7 @@ const Dashboard = () => {
     { title: 'Amount in Hand', value: formatCurrency(stats.cashInHand), icon: <StockValueIcon />, color: '#10B981' },
     { title: 'Expense', value: formatCurrency(stats.totalExpenses), icon: <LossIcon />, color: '#EF4444' },
     {
-      title: 'Pending Collections from customers',
+      title: 'Outstanding',
       value: formatCurrency(stats.pendingCollection),
       icon: <CreditIcon />,
       color: '#F59E0B',
@@ -368,9 +350,14 @@ const Dashboard = () => {
       detailType: 'lowStockItems',
       modalTitle: 'Low Stock Items Alert',
     },
+    { title: 'Total Commission', value: formatCurrency(stats.totalCommission), icon: <CommissionIcon />, color: '#10B981' },
+    { title: 'Total Travel Charge', value: formatCurrency(stats.totalTravelCharge), icon: <TravelIcon />, color: '#F59E0B' },
     { title: 'Monthly Profit', value: formatCurrency(stats.monthlyProfit), icon: <MonthlyProfitIcon />, color: '#10B981' },
     { title: 'Monthly Sales', value: formatCurrency(stats.monthlySales), icon: <MonthlyIcon />, color: '#0EA5E9' },
     { title: 'Monthly Purchase', value: formatCurrency(stats.monthlyPurchase), icon: <PurchaseIcon />, color: '#8B5CF6' },
+    { title: 'Current Month Volume', value: stats.monthlyVolume || 0, icon: <CategoryIcon />, color: '#EC4899' },
+    { title: 'Current Month Commission', value: formatCurrency(stats.monthlyCommission), icon: <CommissionIcon />, color: '#0EA5E9' },
+    { title: 'Current Month Travel Charge', value: formatCurrency(stats.monthlyTravelCharge), icon: <TravelIcon />, color: '#6366F1' },
   ];
 
   return (
@@ -408,7 +395,7 @@ const Dashboard = () => {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Compare your wholesale sales, purchases, and profits.
             </Typography>
-            
+
             {chartsLoading ? (
               <Skeleton variant="rectangular" width="100%" height={300} sx={{ borderRadius: 2 }} />
             ) : charts && charts.length > 0 ? (
@@ -420,21 +407,21 @@ const Dashboard = () => {
                   >
                     <defs>
                       <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="colorPurchase" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                     <XAxis dataKey="date" stroke="#64748B" fontSize={12} tickLine={false} />
-                    <YAxis stroke="#64748B" fontSize={12} tickLine={false} tickFormatter={(val) => `₹${val/1000}k`} />
+                    <YAxis stroke="#64748B" fontSize={12} tickLine={false} tickFormatter={(val) => `₹${val / 1000}k`} />
                     <Tooltip
                       formatter={(val) => [formatCurrency(val), '']}
                       contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}

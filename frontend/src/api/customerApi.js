@@ -33,6 +33,14 @@ export const customerApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Customers'],
     }),
+    recordCustomerPayment: builder.mutation({
+      query: ({ id, ...data }) => ({
+        url: `/customers/${id}/payment`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['Customers', 'Bills', 'Dashboard'],
+    }),
   }),
 });
 
@@ -42,4 +50,5 @@ export const {
   useCreateCustomerMutation,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
+  useRecordCustomerPaymentMutation,
 } = customerApi;

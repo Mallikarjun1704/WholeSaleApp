@@ -306,6 +306,20 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
 
   bill.paidAmount = newPaidAmount;
   bill.status = newStatus;
+
+  if (payAmount > 0) {
+    if (!bill.payments) {
+      bill.payments = [];
+    }
+    bill.payments.push({
+      amount: payAmount,
+      paymentDate: new Date(),
+      paymentMethod: req.body.paymentMethod || bill.paymentMethod || 'Cash',
+      note: req.body.note || 'Single bill payment',
+      recordedBy: req.user?._id,
+    });
+  }
+
   await bill.save();
 
   // Deduct actual paid amount from customer pending credit

@@ -15,12 +15,11 @@ const { asyncHandler } = require('../middleware/errorHandler');
  * @access  Private
  */
 const getDashboardStats = asyncHandler(async (req, res) => {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
   // 1. Total Products (Active)
   const totalProducts = await Product.countDocuments({ isActive: true });
@@ -32,16 +31,28 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   ]);
   const totalQuantity = quantityAgg[0]?.totalQty || 0;
 
-  // 3. Today's Sales (Non-cancelled bills created today)
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  // 3. Today's Sales (Non-cancelled bills dated today)
   const todayBills = await Bill.find({
-    createdAt: { $gte: startOfToday },
     status: { $ne: 'Cancelled' },
+    $expr: {
+      $and: [
+        { $gte: [{ $ifNull: ['$billDate', '$createdAt'] }, startOfToday] },
+        { $lte: [{ $ifNull: ['$billDate', '$createdAt'] }, endOfToday] },
+      ],
+    },
   });
   const todaySales = todayBills.reduce((sum, bill) => sum + bill.finalAmount, 0);
 
-  // 4. Today's Purchase (All purchase bills created today)
+  // 4. Today's Purchase (All purchase bills dated today)
   const todayPurchases = await Purchase.find({
-    createdAt: { $gte: startOfToday },
+    $expr: {
+      $and: [
+        { $gte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, startOfToday] },
+        { $lte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, endOfToday] },
+      ],
+    },
   });
   const todayPurchase = todayPurchases.reduce((sum, purchase) => sum + purchase.totalAmount, 0);
 
@@ -89,11 +100,18 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   // 9. Today's Bills Count
   const todayBillsCount = todayBills.length;
 
-  // 10. Monthly Sales & Profit & Purchase
-  const monthlyBills = await Bill.find({
-    createdAt: { $gte: startOfMonth },
+  // 10. Monthly Sales & Profit & Purchase & Volume (strictly 1st to end of current month)
+  const monthlyBillsMatch = {
     status: { $ne: 'Cancelled' },
-  });
+    $expr: {
+      $and: [
+        { $gte: [{ $ifNull: ['$billDate', '$createdAt'] }, startOfMonth] },
+        { $lte: [{ $ifNull: ['$billDate', '$createdAt'] }, endOfMonth] },
+      ],
+    },
+  };
+
+  const monthlyBills = await Bill.find(monthlyBillsMatch);
   const monthlySales = monthlyBills.reduce((sum, bill) => sum + bill.finalAmount, 0);
 
   let monthlyProfit = 0;
@@ -110,10 +128,24 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     }
   }
 
-  const monthlyPurchasesList = await Purchase.find({
-    createdAt: { $gte: startOfMonth },
-  });
+  const monthlyPurchasesMatch = {
+    $expr: {
+      $and: [
+        { $gte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, startOfMonth] },
+        { $lte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, endOfMonth] },
+      ],
+    },
+  };
+
+  const monthlyPurchasesList = await Purchase.find(monthlyPurchasesMatch);
   const monthlyPurchase = monthlyPurchasesList.reduce((sum, p) => sum + p.totalAmount, 0);
+
+  const monthlyVolumeAgg = await Bill.aggregate([
+    { $match: monthlyBillsMatch },
+    { $unwind: '$items' },
+    { $group: { _id: null, totalQty: { $sum: '$items.quantity' } } },
+  ]);
+  const monthlyVolume = monthlyVolumeAgg[0]?.totalQty || 0;
 
   // All-time Totals (Sales, Purchase, Profit, Loss)
   const totalSalesAgg = await Bill.aggregate([
@@ -196,6 +228,32 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   ]);
   const totalQuantitySold = totalQuantitySoldAgg[0]?.totalQtySold || 0;
 
+  // 17. Total & Monthly Commission and Travel Charge from Supplier Bills (Purchases)
+  const totalSupplierBillAgg = await Purchase.aggregate([
+    {
+      $group: {
+        _id: null,
+        totalComm: { $sum: '$commissionAmount' },
+        totalTravel: { $sum: '$travelCharge' },
+      },
+    },
+  ]);
+  const totalCommission = totalSupplierBillAgg[0]?.totalComm || 0;
+  const totalTravelCharge = totalSupplierBillAgg[0]?.totalTravel || 0;
+
+  const monthlySupplierBillAgg = await Purchase.aggregate([
+    { $match: monthlyPurchasesMatch },
+    {
+      $group: {
+        _id: null,
+        monthlyComm: { $sum: '$commissionAmount' },
+        monthlyTravel: { $sum: '$travelCharge' },
+      },
+    },
+  ]);
+  const monthlyCommission = monthlySupplierBillAgg[0]?.monthlyComm || 0;
+  const monthlyTravelCharge = monthlySupplierBillAgg[0]?.monthlyTravel || 0;
+
   res.status(200).json({
     success: true,
     data: {
@@ -219,6 +277,11 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       monthlySales: Math.round(monthlySales),
       monthlyProfit: Math.round(monthlyProfit),
       monthlyPurchase: Math.round(monthlyPurchase),
+      monthlyVolume,
+      totalCommission: Math.round(totalCommission),
+      monthlyCommission: Math.round(monthlyCommission),
+      totalTravelCharge: Math.round(totalTravelCharge),
+      monthlyTravelCharge: Math.round(monthlyTravelCharge),
       cashInHand: Math.round(cashInHand),
       pendingCollection: Math.round(pendingCollection),
       totalInvestments: Math.round(totalInvestments),
@@ -238,13 +301,17 @@ const getDashboardChartData = asyncHandler(async (req, res) => {
   thirtyDaysAgo.setHours(0, 0, 0, 0);
 
   const bills = await Bill.find({
-    createdAt: { $gte: thirtyDaysAgo },
     status: { $ne: 'Cancelled' },
-  }).sort({ createdAt: 1 });
+    $expr: {
+      $gte: [{ $ifNull: ['$billDate', '$createdAt'] }, thirtyDaysAgo],
+    },
+  });
 
   const purchases = await Purchase.find({
-    createdAt: { $gte: thirtyDaysAgo },
-  }).sort({ createdAt: 1 });
+    $expr: {
+      $gte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, thirtyDaysAgo],
+    },
+  });
 
   // Pre-populate last 30 days
   const dailyData = {};
@@ -258,7 +325,8 @@ const getDashboardChartData = asyncHandler(async (req, res) => {
 
   // Populate Sales and Profit
   for (const bill of bills) {
-    const dateStr = new Date(bill.createdAt).toLocaleDateString('en-IN', {
+    const targetDate = bill.billDate || bill.createdAt;
+    const dateStr = new Date(targetDate).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
     });
@@ -278,7 +346,8 @@ const getDashboardChartData = asyncHandler(async (req, res) => {
 
   // Populate Purchase Data
   for (const purchase of purchases) {
-    const dateStr = new Date(purchase.createdAt).toLocaleDateString('en-IN', {
+    const targetDate = purchase.purchaseDate || purchase.createdAt;
+    const dateStr = new Date(targetDate).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
     });
@@ -330,27 +399,58 @@ const getDashboardDetails = asyncHandler(async (req, res) => {
 
   switch (type) {
     case 'pendingCollections':
-      details = await Bill.find({ status: { $ne: 'Cancelled' } })
-        .populate('customer', 'shopName name phone')
-        .sort({ createdAt: -1 });
-      // Filter bills that have unpaid/pending balance
-      details = details
-        .map((bill) => {
-          const paid = bill.paidAmount || 0;
-          const pending = bill.finalAmount - paid;
-          return {
-            id: bill._id,
-            invoiceNumber: bill.billNumber || bill.invoiceNumber || '-',
-            storeName: bill.customer?.shopName || bill.customer?.name || 'Retail Store',
-            phoneNumber: bill.customer?.phone || '-',
-            date: bill.createdAt,
-            totalAmount: bill.finalAmount,
-            paidAmount: paid,
-            pendingAmount: pending,
-            status: bill.status,
-          };
-        })
-        .filter((b) => b.pendingAmount > 0);
+      const pendingBillsAgg = await Bill.aggregate([
+        {
+          $match: {
+            status: { $ne: 'Cancelled' },
+          },
+        },
+        {
+          $project: {
+            customer: 1,
+            finalAmount: 1,
+            paidAmount: { $ifNull: ['$paidAmount', 0] },
+            pendingAmount: { $subtract: ['$finalAmount', { $ifNull: ['$paidAmount', 0] }] },
+          },
+        },
+        {
+          $match: {
+            pendingAmount: { $gt: 0 },
+          },
+        },
+        {
+          $group: {
+            _id: '$customer',
+            totalOutstanding: { $sum: '$pendingAmount' },
+            unpaidBillsCount: { $sum: 1 },
+          },
+        },
+        {
+          $lookup: {
+            from: 'customers',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'customerInfo',
+          },
+        },
+        {
+          $unwind: {
+            path: '$customerInfo',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            storeName: { $ifNull: ['$customerInfo.shopName', '$customerInfo.name', 'Retail Store'] },
+            phoneNumber: { $ifNull: ['$customerInfo.phone', '-'] },
+            totalOutstanding: 1,
+            unpaidBillsCount: 1,
+          },
+        },
+        { $sort: { totalOutstanding: -1 } },
+      ]);
+      details = pendingBillsAgg;
       break;
 
     case 'totalProducts':
@@ -358,18 +458,9 @@ const getDashboardDetails = asyncHandler(async (req, res) => {
       break;
 
     case 'totalQuantity':
-      const qtyBills = await Bill.find({ status: { $ne: 'Cancelled' } })
-        .populate('customer', 'shopName name phone')
-        .sort({ createdAt: -1 });
-      details = qtyBills.map((bill) => {
-        const billQty = (bill.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0);
-        return {
-          id: bill._id,
-          invoiceNumber: bill.billNumber || bill.invoiceNumber || '-',
-          storeName: bill.customer?.shopName || bill.customer?.name || 'Retail Store',
-          totalQuantity: billQty,
-        };
-      });
+      details = await Product.find({ isActive: true, stock: { $gt: 0 } })
+        .select('name stock')
+        .sort({ name: 1 });
       break;
 
     case 'totalQuantitySold':

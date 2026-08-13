@@ -769,6 +769,8 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                       <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Purchase Date</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Items</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Qty</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Commission</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Travel Charge</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Total</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Paid</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Remaining</TableCell>
@@ -790,6 +792,8 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                           <TableCell sx={{ fontSize: '0.8rem' }}>{formatDateDDMMYYYY(p.purchaseDate || p.createdAt)}</TableCell>
                           <TableCell align="center" sx={{ fontSize: '0.8rem' }}>{p.items?.length || 0}</TableCell>
                           <TableCell align="center" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{totalQty}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(p.commissionAmount || 0)}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(p.travelCharge || 0)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatCurrency(p.totalAmount)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', color: 'success.main' }}>{formatCurrency(paid)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700, color: remaining > 0 ? 'error.main' : 'text.secondary' }}>

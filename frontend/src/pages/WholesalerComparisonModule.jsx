@@ -326,7 +326,7 @@ const ComparisonTab = ({ onSelectHistory }) => {
   // CSV Export
   const handleExportCSV = () => {
     if (!rows.length) return;
-    const headers = ['Phone Name', 'Model', 'Variant', 'Color', ...dynamicSellers.map((s) => s.name)];
+    const headers = ['Phone / Model', 'Variant', ...dynamicSellers.map((s) => s.name), 'Price Diff'];
     const csvRows = [headers.join(',')];
 
     rows.forEach((row) => {
@@ -335,10 +335,9 @@ const ComparisonTab = ({ onSelectHistory }) => {
 
       const line = [
         `"${row.phoneName}"`,
-        `"${row.model}"`,
         `"${row.variant}"`,
-        `"${row.color}"`,
         ...dynamicSellers.map((s) => sellerPricesMap.get(s._id.toString()) || '-'),
+        row.priceDiff || 0,
       ];
       csvRows.push(line.join(','));
     });
@@ -447,36 +446,33 @@ const ComparisonTab = ({ onSelectHistory }) => {
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 800, bgcolor: 'primary.main', color: 'white', zIndex: 11, position: 'sticky', left: 0 }}>
-                  Phone Name
+                <TableCell sx={{ fontWeight: 800, bgcolor: 'primary.main', color: 'white', zIndex: 11, position: 'sticky', left: 0, minWidth: 200 }}>
+                  Phone / Model
                 </TableCell>
-                <TableCell sx={{ fontWeight: 800, bgcolor: 'primary.main', color: 'white', zIndex: 11, position: 'sticky', left: 140 }}>
-                  Model
-                </TableCell>
-                <TableCell sx={{ fontWeight: 800, bgcolor: 'primary.main', color: 'white', zIndex: 11, position: 'sticky', left: 240 }}>
+                <TableCell sx={{ fontWeight: 800, bgcolor: 'primary.main', color: 'white', zIndex: 11, position: 'sticky', left: 200, minWidth: 80 }}>
                   Variant
-                </TableCell>
-                <TableCell sx={{ fontWeight: 800, bgcolor: 'primary.main', color: 'white', zIndex: 11, position: 'sticky', left: 320 }}>
-                  Color
                 </TableCell>
                 {dynamicSellers.map((s) => (
                   <TableCell key={s._id} align="center" sx={{ fontWeight: 800, bgcolor: 'primary.main', color: 'white', minWidth: 120 }}>
                     {s.name}
                   </TableCell>
                 ))}
+                <TableCell align="center" sx={{ fontWeight: 800, bgcolor: 'primary.main', color: 'white', minWidth: 80 }}>
+                  Diff ₹
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4 + dynamicSellers.length} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={3 + dynamicSellers.length} align="center" sx={{ py: 6 }}>
                     <CircularProgress />
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4 + dynamicSellers.length} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                    No wholesaler price comparison records found.
+                  <TableCell colSpan={3 + dynamicSellers.length} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                    No wholesaler price comparison records found. Import price lists first.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -485,25 +481,20 @@ const ComparisonTab = ({ onSelectHistory }) => {
                   row.prices.forEach((p) => sellerPricesMap.set(p.sellerId.toString(), p.price));
 
                   const minPrice = row.minPrice;
+                  const priceDiff = row.priceDiff || 0;
 
                   return (
                     <TableRow key={idx} hover>
                       <TableCell sx={{ fontWeight: 600, position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 9 }}>
                         {row.phoneName}
                       </TableCell>
-                      <TableCell sx={{ position: 'sticky', left: 140, bgcolor: 'background.paper', zIndex: 9 }}>
-                        {row.model}
-                      </TableCell>
-                      <TableCell sx={{ position: 'sticky', left: 240, bgcolor: 'background.paper', zIndex: 9 }}>
-                        {row.variant}
-                      </TableCell>
-                      <TableCell sx={{ position: 'sticky', left: 320, bgcolor: 'background.paper', zIndex: 9 }}>
-                        {row.color}
+                      <TableCell sx={{ position: 'sticky', left: 200, bgcolor: 'background.paper', zIndex: 9, fontWeight: 600, color: 'text.secondary' }}>
+                        {row.variant || '-'}
                       </TableCell>
 
                       {dynamicSellers.map((s) => {
                         const priceVal = sellerPricesMap.get(s._id.toString());
-                        const isLowest = priceVal && priceVal === minPrice;
+                        const isLowest = priceVal && priceVal === minPrice && row.prices.length > 1;
 
                         return (
                           <TableCell
@@ -522,6 +513,10 @@ const ComparisonTab = ({ onSelectHistory }) => {
                           </TableCell>
                         );
                       })}
+
+                      <TableCell align="center" sx={{ fontWeight: 700, color: priceDiff > 0 ? 'error.main' : 'text.secondary' }}>
+                        {priceDiff > 0 ? formatCurrency(priceDiff) : '-'}
+                      </TableCell>
                     </TableRow>
                   );
                 })

@@ -1,21 +1,44 @@
 /**
- * Parser utility for Wholesaler WhatsApp raw messages
+ * Advanced Parser utility for Wholesaler WhatsApp raw messages
+ * Standardizes brands, model names, RAM/Storage variants, and price extraction.
  */
 
-// Common color keywords to detect
-const COMMON_COLORS = [
-  'black', 'white', 'silver', 'blue', 'green', 'pink', 'purple', 'yellow', 'red',
-  'gold', 'grey', 'gray', 'graphite', 'titanium', 'natural titanium', 'desert titanium',
-  'black titanium', 'white titanium', 'copper', 'orange', 'violet', 'cream', 'mint',
-  'starlight', 'midnight', 'sierra blue', 'deep purple', 'alpine green', 'space black',
-  'space grey', 'space gray', 'cosmic black', 'sky blue', 'bronze'
+const KNOWN_BRANDS = [
+  { key: 'redmi', name: 'Redmi' },
+  { key: 'mi', name: 'Redmi' },
+  { key: 'xiaomi', name: 'Redmi' },
+  { key: 'poco', name: 'Poco' },
+  { key: 'samsung', name: 'Samsung' },
+  { key: 'realme', name: 'Realme' },
+  { key: 'apple', name: 'Apple' },
+  { key: 'iphone', name: 'Apple' },
+  { key: 'vivo', name: 'Vivo' },
+  { key: 'oppo', name: 'Oppo' },
+  { key: 'oneplus', name: 'OnePlus' },
+  { key: 'iqoo', name: 'iQOO' },
+  { key: 'motorola', name: 'Motorola' },
+  { key: 'moto', name: 'Motorola' },
+  { key: 'infinix', name: 'Infinix' },
+  { key: 'techno', name: 'Tecno' },
+  { key: 'tecno', name: 'Tecno' },
+  { key: 'nokia', name: 'Nokia' },
+  { key: 'nothing', name: 'Nothing' },
+  { key: 'google', name: 'Google' },
+  { key: 'pixel', name: 'Google' },
 ];
 
-/**
- * Parse a raw text message into individual phone records
- * @param {string} rawText 
- * @param {Array} normalizationRules Array of { rawPattern, normalizedName }
- */
+function detectBrandFromLine(line) {
+  const clean = line.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim();
+  const firstWord = clean.split(/\s+/)[0];
+
+  for (const b of KNOWN_BRANDS) {
+    if (clean.startsWith(b.key) || firstWord === b.key) {
+      return b.name;
+    }
+  }
+  return null;
+}
+
 function parseRawMessage(rawText, normalizationRules = []) {
   if (!rawText || typeof rawText !== 'string') {
     return { validRecords: [], skippedLines: [] };
@@ -25,7 +48,7 @@ function parseRawMessage(rawText, normalizationRules = []) {
   const validRecords = [];
   const skippedLines = [];
 
-  // Build normalization lookup map
+  // Custom normalization lookup map
   const normMap = new Map();
   normalizationRules.forEach((rule) => {
     if (rule.rawPattern && rule.normalizedName) {
@@ -33,135 +56,166 @@ function parseRawMessage(rawText, normalizationRules = []) {
     }
   });
 
-  // Default hardcoded normalization fallbacks
-  const defaultNorms = [
-    { pattern: /^iphone\s*16\b/i, name: 'Apple iPhone 16' },
-    { pattern: /^iph16\b/i, name: 'Apple iPhone 16' },
-    { pattern: /^iphone\s*16\s*pro\b/i, name: 'Apple iPhone 16 Pro' },
-    { pattern: /^iphone\s*16\s*pro\s*max\b/i, name: 'Apple iPhone 16 Pro Max' },
-    { pattern: /^iphone\s*15\b/i, name: 'Apple iPhone 15' },
-    { pattern: /^iph15\b/i, name: 'Apple iPhone 15' },
-    { pattern: /^iphone\s*14\b/i, name: 'Apple iPhone 14' },
-    { pattern: /^s25\b/i, name: 'Samsung Galaxy S25' },
-    { pattern: /^s25\s*ultra\b/i, name: 'Samsung Galaxy S25 Ultra' },
-    { pattern: /^s24\b/i, name: 'Samsung Galaxy S24' },
-  ];
+  let currentBrand = '';
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i].trim();
-    if (!rawLine) continue; // Ignore blank lines silently
+    if (!rawLine) continue; // Ignore blank lines
 
-    // Check if line contains any digits (prices or models)
+    // 1. Check if line is a Brand Header
+    const detectedBrand = detectBrandFromLine(rawLine);
+
+    // Check if line contains a price or RAM/ROM specification
+    const hasRamRom = /\b\d{1,2}\s*[\/:]\s*\d{2,4}\b/.test(rawLine) || /\b(128|256|512)\b/i.test(rawLine);
+    const hasPrice = /(?:₹|rs\.?|inr)?\s*(\d{1,3}(?:,\d{3})+|\d{4,6})/i.test(rawLine);
+
+    if (detectedBrand) {
+      // If line is short or has no RAM/ROM/price, update current brand context
+      if (rawLine.split(/\s+/).length <= 4 && !hasRamRom) {
+        currentBrand = detectedBrand;
+        // Check if there is also a price on the brand header line itself
+        if (!hasPrice) {
+          continue; // It's purely a brand context header line
+        }
+      } else if (!currentBrand) {
+        currentBrand = detectedBrand;
+      }
+    }
+
+    // If line has no digits at all, skip
     if (!/\d/.test(rawLine)) {
-      skippedLines.push({ line: rawLine, lineNumber: i + 1, reason: 'Header/non-product text (no numbers found)' });
+      skippedLines.push({ line: rawLine, lineNumber: i + 1, reason: 'Header/non-product text' });
       continue;
     }
 
     let line = rawLine;
 
-    // 1. Extract Price (at end of line or after separator like -, :, ₹, Rs)
+    // 2. Extract Price
     let price = null;
-    // Match patterns like "- 62500", ": 62500", "Rs 62500", "₹62500", or standalone number at end
-    const priceMatch = line.match(/(?:[-:\s₹]|rs\.?|inr)?\s*(\d{2,3}(?:[,\s]\d{3})+|\d{4,7})(?:\s*\/-|\s*\.\d{2})?\s*$/i);
-    
-    if (priceMatch) {
-      const rawPriceStr = priceMatch[1].replace(/[,\s]/g, '');
-      price = parseFloat(rawPriceStr);
-      // Remove price string from line working copy
-      line = line.substring(0, priceMatch.index).trim();
-    } else {
-      // Try finding any 4-6 digit number if trailing match failed
-      const numbers = rawLine.match(/\b\d{4,6}\b/g);
-      if (numbers && numbers.length > 0) {
-        price = parseFloat(numbers[numbers.length - 1]);
-        line = line.replace(numbers[numbers.length - 1], '').trim();
+
+    // A) Match rupee symbol with amount: ₹11,900, Rs 14500, etc.
+    const symbolMatch = line.match(/(?:₹|rs\.?|inr)\s*([\d,]+)/i);
+    if (symbolMatch) {
+      const val = parseFloat(symbolMatch[1].replace(/,/g, ''));
+      if (val >= 1000 && val <= 500000) {
+        price = val;
+        line = line.replace(symbolMatch[0], ' ');
       }
     }
 
-    if (!price || isNaN(price) || price < 100) {
-      skippedLines.push({ line: rawLine, lineNumber: i + 1, reason: 'Could not extract valid price' });
-      continue;
-    }
-
-    // Clean up trailing separators left over after price extraction
-    line = line.replace(/[-:\/=]+$/, '').trim();
-
-    // 2. Extract Variant (Storage - e.g., 128GB, 256GB, 1TB, 512GB)
-    let variant = '';
-    const variantMatch = line.match(/\b(\d+\s*(?:gb|tb))\b/i) || line.match(/\b(128|256|512|64|32|16|1)\b(?!\s*pro|\s*plus)/i);
-    if (variantMatch) {
-      variant = variantMatch[1].toUpperCase();
-      if (!/gb|tb/i.test(variant)) {
-        variant += 'GB';
-      }
-      // Remove variant from line
-      line = line.replace(variantMatch[0], '').trim();
-    }
-
-    // 3. Extract Color
-    let color = '';
-    const words = line.split(/\s+/);
-    const remainingWords = [];
-
-    for (const word of words) {
-      const cleanWord = word.toLowerCase().replace(/[^a-z]/g, '');
-      if (COMMON_COLORS.includes(cleanWord) && !color) {
-        // Capitalize first letter
-        color = cleanWord.charAt(0).toUpperCase() + cleanWord.slice(1);
-      } else {
-        remainingWords.push(word);
-      }
-    }
-
-    let phoneStr = remainingWords.join(' ').replace(/[-:]+/g, ' ').replace(/\s+/g, ' ').trim();
-
-    if (!phoneStr) {
-      skippedLines.push({ line: rawLine, lineNumber: i + 1, reason: 'Could not extract product name' });
-      continue;
-    }
-
-    // 4. Product Normalization
-    let normalizedPhoneName = phoneStr;
-    const lowerPhone = phoneStr.toLowerCase();
-
-    // Check custom normalization database rules first
-    let matchedRule = false;
-    for (const [pattern, normName] of normMap.entries()) {
-      if (lowerPhone.includes(pattern)) {
-        normalizedPhoneName = normName;
-        matchedRule = true;
-        break;
-      }
-    }
-
-    // Default built-in rules if no custom rule matched
-    if (!matchedRule) {
-      for (const norm of defaultNorms) {
-        if (norm.pattern.test(phoneStr)) {
-          normalizedPhoneName = norm.name;
-          matchedRule = true;
-          break;
+    // B) If no price yet, look for 4 to 6 digit numbers (with optional commas)
+    if (!price) {
+      // Find all number tokens in line
+      const matches = Array.from(line.matchAll(/\b(\d{1,3}(?:,\d{3})+|\d{4,6})\b/g));
+      if (matches.length > 0) {
+        // Iterate backwards from end of line (price is almost always at end of product line)
+        for (let m = matches.length - 1; m >= 0; m--) {
+          const match = matches[m];
+          const val = parseFloat(match[1].replace(/,/g, ''));
+          // Check if this number is likely a price (>= 1000 and <= 500000)
+          if (val >= 1000 && val <= 500000) {
+            price = val;
+            line = line.slice(0, match.index) + ' ' + line.slice(match.index + match[0].length);
+            break;
+          }
         }
       }
     }
 
-    // 5. Separate Phone Name and Model
-    // E.g., "Apple iPhone 16" -> Phone Name: "Apple iPhone", Model: "16"
-    // E.g., "Samsung S25" -> Phone Name: "Samsung Galaxy", Model: "S25"
-    let phoneName = normalizedPhoneName;
-    let model = '';
+    if (!price || isNaN(price) || price < 500) {
+      skippedLines.push({ line: rawLine, lineNumber: i + 1, reason: 'Could not extract valid price' });
+      continue;
+    }
 
-    const modelMatch = normalizedPhoneName.match(/^(.*?)\s+([A-Z0-9]+(?:\s*(?:Pro|Plus|Max|Ultra|FE|Lite| 5G))*)$/i);
-    if (modelMatch && modelMatch[1] && modelMatch[2]) {
-      phoneName = modelMatch[1].trim();
-      model = modelMatch[2].trim();
+    // 3. Extract Variant (RAM / Storage)
+    let variant = '';
+
+    // A) Slash notation: 3/64, 4/128, 8/256, 12/256, 16/512, etc.
+    const slashVariantMatch = line.match(/\b(\d{1,2})\s*[\/:]\s*(\d{2,4})\b/);
+    if (slashVariantMatch) {
+      variant = `${slashVariantMatch[1]}/${slashVariantMatch[2]}`;
+      line = line.replace(slashVariantMatch[0], ' ');
+    } else {
+      // B) Standard GB/TB notation: 128GB, 256GB, 1TB
+      const gbMatch = line.match(/\b(\d{2,4}\s*(?:gb|tb))\b/i);
+      if (gbMatch) {
+        variant = gbMatch[1].toUpperCase().replace(/\s+/, '');
+        line = line.replace(gbMatch[0], ' ');
+      }
+    }
+
+    // 4. Clean up Line to form Model Name
+    // Remove bullets, dashes, tildes, stars, colons, dots at end or isolated dots
+    line = line
+      .replace(/^[\*\-\•\–\—\:\,\.\s]+/, '')
+      .replace(/[\*\-\•\–\—\:\,\.\s]+$/, '')
+      .replace(/fresh|sealed|indian|demo|stock|all fresh/gi, ' ')
+      .replace(/\s*\.\s*/g, ' ')
+      .replace(/[\s\-\–\—\:]+/g, ' ')
+      .trim();
+
+    // Standardize 4G/5G flags
+    let has5G = /\b5g\b/i.test(rawLine) || /\b5g\b/i.test(line);
+    let has4G = /\b4g\b/i.test(rawLine) || /\b4g\b/i.test(line);
+
+    // Remove 4G/5G from line copy so we can cleanly standardize it
+    line = line.replace(/\b5g\b/gi, '').replace(/\b4g\b/gi, '').replace(/\s+/g, ' ').trim();
+
+    // Remove Brand Prefixes like "Mi", "Xiaomi", "Redmi", "Poco" if redundant
+    line = line.replace(/^(mi|xiaomi|redmi|poco|samsung|realme|apple|vivo|oppo)\b/gi, '').trim();
+
+    // Standardize model spacing: Note15 -> Note 15, Note14Pro -> Note 14 Pro, C85x -> C85X
+    line = line
+      .replace(/\bNote(\d+)/gi, 'Note $1')
+      .replace(/\bNote\s*(\d+)\s*Pro\b/gi, 'Note $1 Pro')
+      .replace(/\b(\d+)se\b/gi, '$1 SE')
+      .replace(/\b(\d+)SE\b/gi, '$1 SE')
+      .replace(/\b([a-z]\d+)([a-z])\b/gi, (m, p1, p2) => `${p1}${p2.toUpperCase()}`);
+
+    // Known 5G series default check if not explicitly 4G
+    const ALWAYS_5G_MODELS = ['15a', '15c', '15', 'c75', 'c85', 'c85x', 'm7', 'm8', 'm7 plus', 'turbo 5', 's25', 's24'];
+    const lowerLineCheck = line.toLowerCase();
+    if (!has4G && !has5G && ALWAYS_5G_MODELS.some(m => lowerLineCheck === m || lowerLineCheck.startsWith(m + ' '))) {
+      has5G = true;
+    }
+
+    // Capitalize words in model name
+    line = line.split(/\s+/).map(w => w.toUpperCase() === w ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+    // Append 5G or 4G to Model Name if present
+    if (has5G && !line.includes('5G')) {
+      line = `${line} 5G`;
+    } else if (has4G && !line.includes('4G')) {
+      line = `${line} 4G`;
+    }
+
+    let rawModelStr = line.trim();
+
+    // Determine final Brand
+    let brand = currentBrand || 'Other';
+    if (!brand || brand === 'Other') {
+      const bFromLine = detectBrandFromLine(rawLine);
+      if (bFromLine) brand = bFromLine;
+    }
+
+    // Construct Canonical Phone Name & Model
+    let phoneName = `${brand} ${rawModelStr}`.replace(/\s+/g, ' ').trim();
+    let model = rawModelStr;
+
+    // Check custom database normalization rules
+    const lowerFull = phoneName.toLowerCase();
+    for (const [pattern, normName] of normMap.entries()) {
+      if (lowerFull.includes(pattern)) {
+        phoneName = normName;
+        break;
+      }
     }
 
     validRecords.push({
       phoneName,
       model,
       variant,
-      color,
+      color: '', // default empty if not specified
       price,
       rawText: rawLine,
     });

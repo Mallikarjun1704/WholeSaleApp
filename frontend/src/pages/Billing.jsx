@@ -704,6 +704,7 @@ const Billing = () => {
                     <TableCell sx={{ fontWeight: 700 }}>Retail Shop</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
                     <TableCell align="center" sx={{ fontWeight: 700 }}>Items</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>Total Qty</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700 }}>Paid</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700 }}>Remaining</TableCell>
@@ -714,10 +715,11 @@ const Billing = () => {
                 <TableBody>
                   {billsLoading ? (
                     Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>{Array.from({ length: 9 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
+                      <TableRow key={i}>{Array.from({ length: 10 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
                     ))
                   ) : bills.length > 0 ? (
                     bills.map((b) => {
+                      const totalQty = b.items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0;
                       const paid = b.paidAmount || 0;
                       const remaining = Math.max(0, b.finalAmount - paid);
                       const isPaid = b.status === 'Paid';
@@ -728,6 +730,7 @@ const Billing = () => {
                           <TableCell>{b.customer?.shopName || 'Unknown'}</TableCell>
                           <TableCell>{formatDateDDMMYYYY(b.billDate || b.createdAt)}</TableCell>
                           <TableCell align="center">{b.items?.length || 0}</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 600 }}>{totalQty}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(b.finalAmount)}</TableCell>
                           <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(paid)}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 700, color: remaining > 0 ? 'error.main' : 'text.secondary' }}>

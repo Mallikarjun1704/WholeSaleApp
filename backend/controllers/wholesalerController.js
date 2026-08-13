@@ -195,24 +195,44 @@ const getComparisonPrices = asyncHandler(async (req, res) => {
   // Get list of active sellers for dynamic table columns
   const activeSellers = await WholesalerSeller.find().sort({ name: 1 });
 
-  // MongoDB Aggregation Pipeline to pivot prices by phone product
+  // MongoDB Aggregation Pipeline:
+  // 1. Match filters
+  // 2. Sort by importDate DESC so newest records come first
+  // 3. Group by (phoneName, variant) keeping latest price per seller
   const pipeline = [
     { $match: matchStage },
+    { $sort: { importDate: -1, createdAt: -1 } },
     {
       $group: {
         _id: {
           phoneName: '$phoneName',
-          model: '$model',
           variant: '$variant',
-          color: '$color',
+          seller: '$seller',
         },
+        sellerName: { $first: '$sellerName' },
+        price: { $first: '$price' },
+        importDate: { $first: '$importDate' },
+        model: { $first: '$model' },
+        color: { $first: '$color' },
+        priceId: { $first: '$_id' },
+      },
+    },
+    // Regroup by product (phoneName + variant) collecting seller prices
+    {
+      $group: {
+        _id: {
+          phoneName: '$_id.phoneName',
+          variant: '$_id.variant',
+        },
+        model: { $first: '$model' },
+        color: { $first: '$color' },
         prices: {
           $push: {
-            sellerId: '$seller',
+            sellerId: '$_id.seller',
             sellerName: '$sellerName',
             price: '$price',
             importDate: '$importDate',
-            priceId: '$_id',
+            priceId: '$priceId',
           },
         },
         minPrice: { $min: '$price' },
@@ -223,12 +243,13 @@ const getComparisonPrices = asyncHandler(async (req, res) => {
       $project: {
         _id: 0,
         phoneName: '$_id.phoneName',
-        model: '$_id.model',
         variant: '$_id.variant',
-        color: '$_id.color',
+        model: 1,
+        color: 1,
         prices: 1,
         minPrice: 1,
         maxPrice: 1,
+        priceDiff: { $subtract: ['$maxPrice', '$minPrice'] },
       },
     },
   ];
@@ -236,10 +257,11 @@ const getComparisonPrices = asyncHandler(async (req, res) => {
   // Sorting stage
   const sortDirection = sortOrder === 'desc' ? -1 : 1;
   const sortStage = {};
-  if (['phoneName', 'model', 'variant', 'minPrice'].includes(sortBy)) {
+  if (['phoneName', 'model', 'variant', 'minPrice', 'priceDiff'].includes(sortBy)) {
     sortStage[sortBy] = sortDirection;
   } else {
     sortStage.phoneName = 1;
+    sortStage.variant = 1;
   }
   pipeline.push({ $sort: sortStage });
 
