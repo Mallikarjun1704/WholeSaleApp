@@ -78,59 +78,73 @@ const importPrices = asyncHandler(async (req, res) => {
   // Parse raw text
   const { validRecords, skippedLines } = parseRawMessage(rawText, normRules);
 
-  const insertedRecords = [];
-  const duplicateSkipped = [];
-
-  // Start & end date boundary for same day check
-  const startOfDay = new Date(targetDate);
-  const endOfDay = new Date(targetDate);
-  endOfDay.setHours(23, 59, 59, 999);
+  let updatedCount = 0;
+  let createdCount = 0;
+  let unchangedCount = 0;
+  const updateLogs = [];
 
   for (const item of validRecords) {
-    // Check if duplicate record exists for same seller, same day, same product specs
+    // Find current price record for this seller + product specs (independent of date)
     const existing = await WholesalerPrice.findOne({
       seller: seller._id,
       phoneName: item.phoneName,
-      model: item.model,
       variant: item.variant,
       color: item.color,
-      importDate: { $gte: startOfDay, $lte: endOfDay },
     });
 
     if (existing) {
-      duplicateSkipped.push({
-        line: item.rawText,
-        reason: `Duplicate entry for ${seller.name} on ${targetDate.toISOString().split('T')[0]}`,
+      if (existing.price !== item.price) {
+        // Daily price change occurred -> Overwrite existing price record in place
+        const oldPrice = existing.price;
+        existing.price = item.price;
+        existing.importDate = targetDate;
+        existing.rawText = item.rawText;
+        existing.model = item.model;
+        await existing.save();
+
+        updatedCount++;
+        updateLogs.push({
+          line: item.rawText,
+          reason: `Overwrote price: ₹${oldPrice} → ₹${item.price}`,
+        });
+      } else {
+        // Price unchanged -> Update timestamp without creating historical log
+        existing.importDate = targetDate;
+        existing.rawText = item.rawText;
+        await existing.save();
+
+        unchangedCount++;
+      }
+    } else {
+      // New product record -> Create single current price entry
+      await WholesalerPrice.create({
+        seller: seller._id,
+        sellerName: seller.name,
+        phoneName: item.phoneName,
+        model: item.model,
+        variant: item.variant,
+        color: item.color,
+        price: item.price,
+        importDate: targetDate,
+        rawText: item.rawText,
       });
-      continue;
+
+      createdCount++;
     }
-
-    insertedRecords.push({
-      seller: seller._id,
-      sellerName: seller.name,
-      phoneName: item.phoneName,
-      model: item.model,
-      variant: item.variant,
-      color: item.color,
-      price: item.price,
-      importDate: targetDate,
-      rawText: item.rawText,
-    });
   }
 
-  let createdDocs = [];
-  if (insertedRecords.length > 0) {
-    createdDocs = await WholesalerPrice.insertMany(insertedRecords);
-  }
-
-  const allSkipped = [...skippedLines, ...duplicateSkipped];
+  const allSkipped = [...skippedLines];
 
   res.status(200).json({
     success: true,
-    message: `Imported ${createdDocs.length} price records successfully`,
-    importedCount: createdDocs.length,
+    message: `Processed price import for ${seller.name}: ${createdCount} new products, ${updatedCount} prices overwritten/updated, ${unchangedCount} unchanged`,
+    importedCount: createdCount + updatedCount,
+    createdCount,
+    updatedCount,
+    unchangedCount,
     skippedCount: allSkipped.length,
     skippedLines: allSkipped,
+    updateLogs,
   });
 });
 
@@ -271,12 +285,15 @@ const getComparisonPrices = asyncHandler(async (req, res) => {
   const totalRecords = totalResult.length > 0 ? totalResult[0].total : 0;
 
   // Pagination stage
-  const pageNum = parseInt(page, 10) || 1;
-  const limitNum = parseInt(limit, 10) || 50;
-  const skip = (pageNum - 1) * limitNum;
+  const isShowAll = limit === 'all' || limit === '0' || parseInt(limit, 10) <= 0;
+  const pageNum = isShowAll ? 1 : (parseInt(page, 10) || 1);
+  const limitNum = isShowAll ? 0 : (parseInt(limit, 10) || 50);
 
-  pipeline.push({ $skip: skip });
-  pipeline.push({ $limit: limitNum });
+  if (!isShowAll && limitNum > 0) {
+    const skip = (pageNum - 1) * limitNum;
+    pipeline.push({ $skip: skip });
+    pipeline.push({ $limit: limitNum });
+  }
 
   const rows = await WholesalerPrice.aggregate(pipeline);
 
@@ -288,8 +305,8 @@ const getComparisonPrices = asyncHandler(async (req, res) => {
       pagination: {
         total: totalRecords,
         page: pageNum,
-        limit: limitNum,
-        pages: Math.ceil(totalRecords / limitNum),
+        limit: isShowAll ? totalRecords : limitNum,
+        pages: isShowAll ? 1 : Math.ceil(totalRecords / (limitNum || 1)),
       },
     },
   });
@@ -387,6 +404,32 @@ const addNormalization = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Delete all price list records for a specific seller from DB
+ * @route   DELETE /api/wholesaler/seller-prices/:sellerId
+ * @access  Private
+ */
+const deleteSellerPrices = asyncHandler(async (req, res) => {
+  const { sellerId } = req.params;
+
+  if (!sellerId) {
+    return res.status(400).json({ success: false, message: 'sellerId parameter is required' });
+  }
+
+  const seller = await WholesalerSeller.findById(sellerId);
+  if (!seller) {
+    return res.status(404).json({ success: false, message: 'Wholesaler seller not found' });
+  }
+
+  const result = await WholesalerPrice.deleteMany({ seller: sellerId });
+
+  res.status(200).json({
+    success: true,
+    message: `Cleared all price list records for ${seller.name} (${result.deletedCount} records deleted from database)`,
+    deletedCount: result.deletedCount,
+  });
+});
+
 module.exports = {
   createSeller,
   getSellers,
@@ -394,6 +437,7 @@ module.exports = {
   getComparisonPrices,
   getPriceHistory,
   deleteImportBatch,
+  deleteSellerPrices,
   getNormalizations,
   addNormalization,
 };

@@ -60,6 +60,13 @@ export const wholesalerApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['WholesalerPrices'],
     }),
+    deleteSellerPrices: builder.mutation({
+      query: (sellerId) => ({
+        url: `/wholesaler/seller-prices/${sellerId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['WholesalerPrices'],
+    }),
     getWholesalerNormalizations: builder.query({
       query: () => '/wholesaler/normalizations',
       providesTags: ['WholesalerNormalizations'],
@@ -82,6 +89,7 @@ export const {
   useGetWholesalerPricesQuery,
   useGetWholesalerHistoryQuery,
   useDeleteWholesalerImportMutation,
+  useDeleteSellerPricesMutation,
   useGetWholesalerNormalizationsQuery,
   useAddWholesalerNormalizationMutation,
 } = wholesalerApi;

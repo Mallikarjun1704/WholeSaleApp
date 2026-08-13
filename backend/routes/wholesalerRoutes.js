@@ -8,6 +8,7 @@ const {
   getComparisonPrices,
   getPriceHistory,
   deleteImportBatch,
+  deleteSellerPrices,
   getNormalizations,
   addNormalization,
 } = require('../controllers/wholesalerController');
@@ -20,6 +21,7 @@ router.get('/sellers', getSellers);
 
 router.post('/import', importPrices);
 router.delete('/import', deleteImportBatch);
+router.delete('/seller-prices/:sellerId', deleteSellerPrices);
 
 router.get('/prices', getComparisonPrices);
 router.get('/history', getPriceHistory);

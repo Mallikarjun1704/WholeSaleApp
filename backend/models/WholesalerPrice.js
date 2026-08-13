@@ -52,13 +52,13 @@ const wholesalerPriceSchema = new mongoose.Schema(
   }
 );
 
-// MongoDB indexes for performance with 100k+ records
+// MongoDB indexes for single-current-price per seller per product specs
 wholesalerPriceSchema.index({ seller: 1 });
 wholesalerPriceSchema.index({ phoneName: 1 });
 wholesalerPriceSchema.index({ model: 1 });
 wholesalerPriceSchema.index({ variant: 1 });
 wholesalerPriceSchema.index({ importDate: -1 });
-wholesalerPriceSchema.index({ seller: 1, importDate: 1, phoneName: 1, model: 1, variant: 1, color: 1 }, { unique: true });
+wholesalerPriceSchema.index({ seller: 1, phoneName: 1, variant: 1, color: 1 }, { unique: true });
 
 const WholesalerPrice = mongoose.model('WholesalerPrice', wholesalerPriceSchema);
 
