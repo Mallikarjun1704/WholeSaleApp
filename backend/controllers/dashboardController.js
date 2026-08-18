@@ -284,6 +284,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       cashInHand: Math.round(cashInHand),
       pendingCollection: Math.round(pendingCollection),
       totalInvestments: Math.round(totalInvestments),
+      totalPaidSales: Math.round(totalPaidSales),
+      totalPaidPurchases: Math.round(totalPaidPurchases),
       totalExpenses: Math.round(totalExpenses),
     },
   });

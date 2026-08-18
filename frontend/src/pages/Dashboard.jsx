@@ -27,6 +27,8 @@ import {
   Paper,
   CircularProgress,
   IconButton,
+  Chip,
+  Stack,
 } from '@mui/material';
 import {
   Inventory as InventoryIcon,
@@ -283,12 +285,87 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
   );
 };
 
+// ========== Amount in Hand Breakdown Dialog ==========
+const AmountInHandBreakdownDialog = ({ open, onClose, stats }) => {
+  const investments = stats.totalInvestments || 0;
+  const paidSales = stats.totalPaidSales || 0;
+  const paidPurchases = stats.totalPaidPurchases || 0;
+  const expenses = stats.totalExpenses || 0;
+  const cashInHand = stats.cashInHand || 0;
+
+  const rows = [
+    { label: 'Partner Investments (Net Capital)', value: investments, sign: '+', color: '#10B981' },
+    { label: 'Total Paid Sales (Money Received from Shops)', value: paidSales, sign: '+', color: '#0EA5E9' },
+    { label: 'Total Paid Purchases (Money Paid to Suppliers)', value: paidPurchases, sign: '−', color: '#EF4444' },
+    { label: 'Total Expenses (Rent, Salaries, etc.)', value: expenses, sign: '−', color: '#F59E0B' },
+  ];
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ m: 0, p: 2.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6" fontWeight={700}>Amount in Hand — Breakdown</Typography>
+        <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
+      </DialogTitle>
+      <Divider />
+      <DialogContent sx={{ p: 0 }}>
+        {/* Formula banner */}
+        <Box sx={{ px: 3, py: 2, bgcolor: alpha('#10B981', 0.06) }}>
+          <Typography variant="body2" color="text.secondary" fontWeight={600} sx={{ mb: 0.5 }}>Formula:</Typography>
+          <Typography variant="body2" fontWeight={700} sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+            Amount in Hand = Investments + Paid Sales − Paid Purchases − Expenses
+          </Typography>
+        </Box>
+        <Divider />
+
+        {/* Breakdown rows */}
+        <Box sx={{ px: 3, py: 2 }}>
+          <Stack spacing={1.5}>
+            {rows.map((row, idx) => (
+              <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5, px: 2, borderRadius: 2, bgcolor: alpha(row.color, 0.05), border: `1px solid ${alpha(row.color, 0.15)}` }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Chip label={row.sign} size="small" sx={{ fontWeight: 800, fontSize: '1rem', bgcolor: alpha(row.color, 0.15), color: row.color, minWidth: 32 }} />
+                  <Typography variant="body2" fontWeight={600}>{row.label}</Typography>
+                </Box>
+                <Typography variant="subtitle2" fontWeight={800} sx={{ color: row.color, fontFamily: 'monospace' }}>
+                  {formatCurrency(row.value)}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+
+          {/* Divider line */}
+          <Divider sx={{ my: 2, borderStyle: 'dashed' }} />
+
+          {/* Grand Total */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, px: 2.5, borderRadius: 2, bgcolor: cashInHand >= 0 ? alpha('#10B981', 0.1) : alpha('#EF4444', 0.1), border: `2px solid ${cashInHand >= 0 ? '#10B981' : '#EF4444'}` }}>
+            <Typography variant="subtitle1" fontWeight={800}>= Amount in Hand</Typography>
+            <Typography variant="h5" fontWeight={900} sx={{ color: cashInHand >= 0 ? '#10B981' : '#EF4444', fontFamily: 'monospace' }}>
+              {formatCurrency(cashInHand)}
+            </Typography>
+          </Box>
+
+          {/* Cross-check */}
+          <Box sx={{ mt: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
+            <Typography variant="caption" color="text.secondary">
+              Cross-check: {formatCurrency(investments)} + {formatCurrency(paidSales)} − {formatCurrency(paidPurchases)} − {formatCurrency(expenses)} = <strong>{formatCurrency(investments + paidSales - paidPurchases - expenses)}</strong>
+            </Typography>
+          </Box>
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose} variant="outlined">Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const Dashboard = () => {
   const { data: statsData, isLoading: statsLoading } = useGetDashboardStatsQuery();
   const { data: chartsData, isLoading: chartsLoading } = useGetDashboardChartsQuery();
   const { data: activitiesData, isLoading: activitiesLoading } = useGetRecentActivitiesQuery();
 
   const [activeModal, setActiveModal] = useState({ open: false, type: '', title: '' });
+  const [cashBreakdownOpen, setCashBreakdownOpen] = useState(false);
 
   const handleOpenModal = (type, title) => {
     if (type) {
@@ -305,7 +382,7 @@ const Dashboard = () => {
   const activities = activitiesData?.data || [];
 
   const statCardsData = [
-    { title: 'Amount in Hand', value: formatCurrency(stats.cashInHand), icon: <StockValueIcon />, color: '#10B981' },
+    { title: 'Amount in Hand', value: formatCurrency(stats.cashInHand), icon: <StockValueIcon />, color: '#10B981', customClick: () => setCashBreakdownOpen(true) },
     { title: 'Expense', value: formatCurrency(stats.totalExpenses), icon: <LossIcon />, color: '#EF4444' },
     {
       title: 'Outstanding',
@@ -379,7 +456,7 @@ const Dashboard = () => {
             <StatCard
               {...stat}
               isLoading={statsLoading}
-              onClick={stat.detailType ? () => handleOpenModal(stat.detailType, stat.modalTitle) : undefined}
+              onClick={stat.customClick || (stat.detailType ? () => handleOpenModal(stat.detailType, stat.modalTitle) : undefined)}
             />
           </Grid>
         ))}
@@ -502,6 +579,13 @@ const Dashboard = () => {
         onClose={handleCloseModal}
         detailType={activeModal.type}
         title={activeModal.title}
+      />
+
+      {/* Amount in Hand Breakdown Dialog */}
+      <AmountInHandBreakdownDialog
+        open={cashBreakdownOpen}
+        onClose={() => setCashBreakdownOpen(false)}
+        stats={stats}
       />
     </Box>
   );
