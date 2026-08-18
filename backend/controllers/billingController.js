@@ -116,6 +116,7 @@ const createBill = asyncHandler(async (req, res) => {
 
   const packingCharges = Number(discount) || 0;
   const finalAmount = subtotal + totalGst + packingCharges;
+  const customerOutstanding = Number(customer.pendingCredit) || 0;
 
   // Calculate initial paid amount & status
   const initialPaid = Math.min(finalAmount, Math.max(0, Number(paidAmount) || 0));
@@ -137,6 +138,7 @@ const createBill = asyncHandler(async (req, res) => {
     subtotal,
     discount: packingCharges,
     gstAmount: totalGst,
+    outstandingAmount: customerOutstanding,
     finalAmount,
     paidAmount: initialPaid,
     paymentMethod: paymentMethod || 'Cash',
@@ -179,7 +181,7 @@ const createBill = asyncHandler(async (req, res) => {
 
   // Populate and return
   const populatedBill = await Bill.findById(bill._id)
-    .populate('customer', 'shopName ownerName phone')
+    .populate('customer', 'shopName ownerName phone pendingCredit')
     .populate('items.product', 'name sku');
 
   res.status(201).json({
@@ -206,7 +208,7 @@ const getBills = asyncHandler(async (req, res) => {
 
   const bills = await Bill.find(query)
     .sort({ createdAt: -1 })
-    .populate('customer', 'shopName ownerName phone')
+    .populate('customer', 'shopName ownerName phone pendingCredit')
     .populate('items.product', 'name sku');
 
   res.status(200).json({
@@ -222,7 +224,7 @@ const getBills = asyncHandler(async (req, res) => {
  */
 const getBillById = asyncHandler(async (req, res) => {
   const bill = await Bill.findById(req.params.id)
-    .populate('customer', 'shopName ownerName phone address gstNumber')
+    .populate('customer', 'shopName ownerName phone address gstNumber pendingCredit')
     .populate('items.product', 'name sku brand category');
 
   if (!bill) {
@@ -246,7 +248,7 @@ const getBillsByCustomer = asyncHandler(async (req, res) => {
     status: { $ne: 'Cancelled' },
   })
     .sort({ createdAt: -1 })
-    .populate('customer', 'shopName ownerName phone')
+    .populate('customer', 'shopName ownerName phone pendingCredit')
     .populate('items.product', 'name sku');
 
   res.status(200).json({
@@ -256,12 +258,12 @@ const getBillsByCustomer = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Update bill payment status (Support partial payments)
+ * @desc    Update bill payment status (Support partial payments & reverting to unpaid)
  * @route   PATCH /api/billing/:id/payment
  * @access  Private/Admin
  */
 const updateBillPaymentStatus = asyncHandler(async (req, res) => {
-  const { status, amount } = req.body;
+  const { status, amount, setPaidAmount, paymentMethod, note } = req.body;
 
   // Only master / admin can update payment status
   if (req.user?.role !== 'admin') {
@@ -277,64 +279,111 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Bill not found' });
   }
 
-  // Once Paid, status cannot be changed back
-  if (bill.status === 'Paid') {
-    return res.status(400).json({
-      success: false,
-      message: 'Once marked as Paid, the sales bill status cannot be changed.',
-    });
-  }
-
-  let payAmount = 0;
+  const billTotal = bill.finalAmount || 0;
   const currentPaid = bill.paidAmount || 0;
-  const remaining = Math.max(0, bill.finalAmount - currentPaid);
+  let newPaidAmount = currentPaid;
+  let newStatus = bill.status;
+  let logPayment = false;
+  let logAmount = 0;
+  let logNote = note || '';
 
-  if (amount !== undefined && amount !== null && !isNaN(Number(amount))) {
-    payAmount = Math.min(remaining, Math.max(0, Number(amount)));
+  // Handle explicit revert to Unpaid / Pending
+  if (status === 'Pending' || status === 'Unpaid' || req.body.action === 'revert') {
+    newPaidAmount = 0;
+    newStatus = 'Pending';
+    bill.paidDate = null;
+    logPayment = true;
+    logAmount = 0;
+    logNote = logNote || 'Payment status reverted to Unpaid (Pending) by Admin';
   } else if (status === 'Paid') {
-    payAmount = remaining;
-  }
-
-  const newPaidAmount = currentPaid + payAmount;
-  let newStatus = 'Pending';
-  if (newPaidAmount >= bill.finalAmount) {
+    // Explicitly mark as Paid in full
+    logAmount = Math.max(0, billTotal - currentPaid);
+    newPaidAmount = billTotal;
     newStatus = 'Paid';
     bill.paidDate = new Date();
-  } else if (newPaidAmount > 0) {
-    newStatus = 'Partially Paid';
+    logPayment = logAmount > 0;
+    logNote = logNote || 'Marked as fully Paid by Admin';
+  } else if (setPaidAmount !== undefined && !isNaN(Number(setPaidAmount))) {
+    // Directly set exact paid amount
+    const targetPaid = Math.max(0, Math.min(billTotal, Number(setPaidAmount)));
+    logAmount = targetPaid - currentPaid;
+    newPaidAmount = targetPaid;
+    if (newPaidAmount >= billTotal) {
+      newStatus = 'Paid';
+      bill.paidDate = bill.paidDate || new Date();
+    } else if (newPaidAmount > 0) {
+      newStatus = 'Partially Paid';
+      bill.paidDate = null;
+    } else {
+      newStatus = 'Pending';
+      bill.paidDate = null;
+    }
+    logPayment = true;
+    logNote = logNote || `Paid amount set to ₹${newPaidAmount} by Admin`;
+  } else if (amount !== undefined && amount !== null && !isNaN(Number(amount))) {
+    // Add additional payment amount (e.g. paying partial/full balance)
+    const payAmount = Number(amount);
+    if (payAmount < 0) {
+      // Revert/decrease paid amount
+      newPaidAmount = Math.max(0, currentPaid + payAmount);
+    } else {
+      const remaining = Math.max(0, billTotal - currentPaid);
+      const applied = Math.min(remaining, payAmount);
+      newPaidAmount = currentPaid + applied;
+      logAmount = applied;
+    }
+
+    if (newPaidAmount >= billTotal) {
+      newStatus = 'Paid';
+      bill.paidDate = new Date();
+    } else if (newPaidAmount > 0) {
+      newStatus = 'Partially Paid';
+      bill.paidDate = null;
+    } else {
+      newStatus = 'Pending';
+      bill.paidDate = null;
+    }
+    logPayment = true;
+    logNote = logNote || 'Payment updated by Admin';
   }
 
   bill.paidAmount = newPaidAmount;
   bill.status = newStatus;
 
-  if (payAmount > 0) {
+  if (logPayment) {
     if (!bill.payments) {
       bill.payments = [];
     }
     bill.payments.push({
-      amount: payAmount,
+      amount: logAmount,
       paymentDate: new Date(),
-      paymentMethod: req.body.paymentMethod || bill.paymentMethod || 'Cash',
-      note: req.body.note || 'Single bill payment',
+      paymentMethod: paymentMethod || bill.paymentMethod || 'Cash',
+      note: logNote,
       recordedBy: req.user?._id,
     });
   }
 
   await bill.save();
 
-  // Deduct actual paid amount from customer pending credit
-  if (payAmount > 0) {
+  // Recalculate customer's pending credit from all unpaid/partial bills to ensure 100% precision
+  if (bill.customer) {
+    const remainingBillsAgg = await Bill.aggregate([
+      { $match: { customer: bill.customer, status: { $in: ['Pending', 'Partially Paid'] } } },
+      { $group: { _id: null, totalPending: { $sum: { $subtract: ['$finalAmount', { $ifNull: ['$paidAmount', 0] }] } } } },
+    ]);
+    const newPendingCredit = remainingBillsAgg[0]?.totalPending || 0;
     await Customer.findByIdAndUpdate(bill.customer, {
-      $inc: { pendingCredit: -payAmount },
+      pendingCredit: Math.max(0, Math.round(newPendingCredit)),
     });
   }
 
   const updatedBill = await Bill.findById(bill._id)
-    .populate('customer', 'shopName ownerName phone')
+    .populate('customer', 'shopName ownerName phone pendingCredit')
     .populate('items.product', 'name sku');
 
   res.status(200).json({
     success: true,
+    message: `Payment status updated to ${newStatus}`,
     data: updatedBill,
   });
 });
@@ -346,12 +395,24 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
  */
 const getBillPdf = asyncHandler(async (req, res) => {
   const bill = await Bill.findById(req.params.id)
-    .populate('customer', 'shopName ownerName name phone address gstNumber')
+    .populate('customer', 'shopName ownerName name phone address gstNumber pendingCredit')
     .populate('items.product', 'name sku brand category');
 
   if (!bill) {
     return res.status(404).json({ success: false, message: 'Bill not found' });
   }
+
+  // Determine current customer outstanding amount (for both old and new bills)
+  let currentOutstanding = 0;
+  if (bill.customer) {
+    if (typeof bill.customer.pendingCredit === 'number') {
+      currentOutstanding = bill.customer.pendingCredit;
+    } else {
+      const cust = await Customer.findById(bill.customer._id || bill.customer);
+      currentOutstanding = cust?.pendingCredit || 0;
+    }
+  }
+  bill.outstandingAmount = currentOutstanding;
 
   // Format filename as shopName_date_indexValue.pdf
   const rawShopName = bill.customer?.shopName || bill.customer?.ownerName || bill.customer?.name || 'Customer';
@@ -380,7 +441,7 @@ const getBillPdf = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Edit bill details (Admin only, allowed until fully paid)
+ * @desc    Edit bill details (Admin only)
  * @route   PUT /api/billing/:id
  * @access  Private (Admin)
  */
@@ -392,13 +453,6 @@ const updateBill = asyncHandler(async (req, res) => {
   const bill = await Bill.findById(req.params.id);
   if (!bill) {
     return res.status(404).json({ success: false, message: 'Bill not found' });
-  }
-
-  if (bill.status === 'Paid') {
-    return res.status(400).json({
-      success: false,
-      message: 'This bill has been fully paid. Fully paid bills cannot be edited.',
-    });
   }
 
   const { discount, billDate, items } = req.body;
@@ -521,9 +575,7 @@ const updateBill = asyncHandler(async (req, res) => {
   }
 
   const packingCharges = discount !== undefined ? Number(discount) : bill.discount;
-  const oldFinal = bill.finalAmount;
   const newFinal = bill.subtotal + bill.gstAmount + packingCharges;
-  const diff = newFinal - oldFinal;
 
   bill.discount = packingCharges;
   bill.finalAmount = newFinal;
@@ -531,28 +583,35 @@ const updateBill = asyncHandler(async (req, res) => {
     bill.billDate = new Date(billDate);
   }
 
-  // Adjust payment status if needed
+  // Adjust payment status based on new final amount and paid amount
   const paid = bill.paidAmount || 0;
   if (paid >= newFinal) {
     bill.status = 'Paid';
-    bill.paidDate = new Date();
+    bill.paidDate = bill.paidDate || new Date();
   } else if (paid > 0) {
     bill.status = 'Partially Paid';
+    bill.paidDate = null;
   } else {
     bill.status = 'Pending';
+    bill.paidDate = null;
   }
 
   await bill.save();
 
-  // Adjust customer pending debt if total changed
-  if (diff !== 0 && bill.customer) {
+  // Recalculate customer's pending credit from all unpaid bills
+  if (bill.customer) {
+    const remainingBillsAgg = await Bill.aggregate([
+      { $match: { customer: bill.customer, status: { $in: ['Pending', 'Partially Paid'] } } },
+      { $group: { _id: null, totalPending: { $sum: { $subtract: ['$finalAmount', { $ifNull: ['$paidAmount', 0] }] } } } },
+    ]);
+    const newPendingCredit = remainingBillsAgg[0]?.totalPending || 0;
     await Customer.findByIdAndUpdate(bill.customer, {
-      $inc: { pendingCredit: diff },
+      pendingCredit: Math.max(0, Math.round(newPendingCredit)),
     });
   }
 
   const updatedBill = await Bill.findById(bill._id)
-    .populate('customer', 'shopName ownerName phone')
+    .populate('customer', 'shopName ownerName phone pendingCredit')
     .populate('items.product', 'name sku');
 
   res.status(200).json({

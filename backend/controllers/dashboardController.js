@@ -192,15 +192,14 @@ const getDashboardStats = asyncHandler(async (req, res) => {
 
   // 12. Total Paid Sales (Money received from retail shops)
   const paidBillsAgg = await Bill.aggregate([
-    { $match: { status: 'Paid' } },
-    { $group: { _id: null, total: { $sum: '$finalAmount' } } },
+    { $match: { status: { $ne: 'Cancelled' } } },
+    { $group: { _id: null, total: { $sum: { $ifNull: ['$paidAmount', 0] } } } },
   ]);
   const totalPaidSales = paidBillsAgg[0]?.total || 0;
 
   // 13. Total Paid Purchases (Money paid to suppliers)
   const paidPurchasesAgg = await Purchase.aggregate([
-    { $match: { paymentStatus: 'Paid' } },
-    { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+    { $group: { _id: null, total: { $sum: { $ifNull: ['$paidAmount', 0] } } } },
   ]);
   const totalPaidPurchases = paidPurchasesAgg[0]?.total || 0;
 

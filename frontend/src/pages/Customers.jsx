@@ -48,9 +48,17 @@ const CustomerFormDialog = ({ open, onClose, customer, onSave }) => {
   );
 };
 
-// ========== Bill Details Dialog ==========
+// ========== Bill Detail Viewer Dialog ==========
 const BillDetailsDialog = ({ open, onClose, bill }) => {
   if (!bill) return null;
+
+  const customerOutstanding = typeof bill.outstandingAmount === 'number'
+    ? bill.outstandingAmount
+    : (Number(bill.customer?.pendingCredit) || 0);
+  const subtotal = Number(bill.subtotal) || 0;
+  const gstAmount = Number(bill.gstAmount) || 0;
+  const packingCharges = Number(bill.discount) || 0;
+  const grandTotal = subtotal + gstAmount + packingCharges + customerOutstanding;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -63,7 +71,10 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
           }}>
             TM
           </Box>
-          <Typography variant="h6" fontWeight={800}>Bill Details: {bill.billNumber}</Typography>
+          <Box>
+            <Typography variant="h6" fontWeight={800}>Bill Details: #{bill.billNumber}</Typography>
+            <Typography variant="caption" color="text.secondary">Date: {new Date(bill.billDate || bill.createdAt).toLocaleDateString('en-IN')}</Typography>
+          </Box>
         </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
       </DialogTitle>
@@ -93,10 +104,17 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
         <Divider sx={{ my: 1.5 }} />
 
         <Stack spacing={1} sx={{ alignItems: 'flex-end' }}>
-          <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(bill.subtotal)}</strong></Typography>
-          <Typography variant="body2" color="text.secondary">GST Amount: <strong>{formatCurrency(bill.gstAmount)}</strong></Typography>
-          {bill.discount > 0 && <Typography variant="body2" color="text.secondary">Discount: <strong>{formatCurrency(bill.discount)}</strong></Typography>}
-          <Typography variant="subtitle1" fontWeight={800} color="primary.main">Final Total: {formatCurrency(bill.finalAmount)}</Typography>
+          <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(subtotal)}</strong></Typography>
+          <Typography variant="body2" color="text.secondary">GST Amount: <strong>{formatCurrency(gstAmount)}</strong></Typography>
+          {packingCharges > 0 && <Typography variant="body2" color="text.secondary">Packing Charges: <strong>+ {formatCurrency(packingCharges)}</strong></Typography>}
+          <Typography variant="body2" color="error.main">Outstanding Amount: <strong>{formatCurrency(customerOutstanding)}</strong></Typography>
+          <Paper elevation={0} sx={{ p: 1.5, px: 3, bgcolor: 'primary.main', color: '#fff', borderRadius: 2, mt: 1, mb: 1 }}>
+            <Typography variant="subtitle1" fontWeight={800}>Grand Total: {formatCurrency(grandTotal)}</Typography>
+          </Paper>
+          <Typography variant="body2" color="success.main">Amount Paid: <strong>{formatCurrency(bill.paidAmount || 0)}</strong></Typography>
+          {Math.max(0, bill.finalAmount - (bill.paidAmount || 0)) > 0 && (
+            <Typography variant="body2" color="error.main" fontWeight={700}>Remaining to Pay: {formatCurrency(Math.max(0, bill.finalAmount - (bill.paidAmount || 0)))}</Typography>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between' }}>
@@ -115,46 +133,88 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
 };
 
 // ========== Record Partial / Full Payment Dialog for Single Bill ==========
-const RecordPaymentDialog = ({ open, onClose, billNumber, totalAmount, paidAmount, onSave, isLoading }) => {
-  const remaining = Math.max(0, (totalAmount || 0) - (paidAmount || 0));
-  const [payAmount, setPayAmount] = useState(remaining);
+const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
+  const [payAmount, setPayAmount] = useState('');
 
   React.useEffect(() => {
-    setPayAmount(remaining);
-  }, [open, remaining]);
+    if (bill) {
+      const total = bill.finalAmount || 0;
+      const paid = bill.paidAmount || 0;
+      const rem = Math.max(0, total - paid);
+      setPayAmount(rem > 0 ? rem : total);
+    }
+  }, [open, bill]);
+
+  if (!bill) return null;
+
+  const totalAmount = bill.finalAmount || 0;
+  const paidAmount = bill.paidAmount || 0;
+  const status = bill.status || 'Pending';
+  const isPaid = status === 'Paid';
+  const remaining = Math.max(0, totalAmount - paidAmount);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>Record Payment: #{billNumber}</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700 }}>Payment Status: #{bill.billNumber}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <Box sx={{ p: 1.5, bgcolor: 'grey.100', borderRadius: 1.5 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="body2" color="text.secondary">Current Status:</Typography>
+              <Chip
+                label={status}
+                size="small"
+                color={isPaid ? 'success' : status === 'Partially Paid' ? 'warning' : 'error'}
+                sx={{ fontWeight: 700 }}
+              />
+            </Box>
             <Typography variant="body2" color="text.secondary">Total Amount: <strong>{formatCurrency(totalAmount)}</strong></Typography>
             <Typography variant="body2" color="text.secondary">Paid So Far: <strong>{formatCurrency(paidAmount)}</strong></Typography>
-            <Typography variant="subtitle2" color="error.main" fontWeight={800} sx={{ mt: 0.5 }}>
-              Remaining to Pay: {formatCurrency(remaining)}
+            <Typography variant="subtitle2" color={remaining > 0 ? 'error.main' : 'success.main'} fontWeight={800} sx={{ mt: 0.5 }}>
+              {remaining > 0 ? `Remaining to Pay: ${formatCurrency(remaining)}` : 'Bill is fully paid'}
             </Typography>
           </Box>
-          <TextField
-            label="Payment Amount ₹ *"
-            type="number"
-            value={payAmount}
-            onChange={(e) => setPayAmount(e.target.value)}
-            fullWidth
-            size="small"
-            inputProps={{ min: 1, max: remaining }}
-          />
+
+          {isPaid ? (
+            <Alert severity="warning" sx={{ fontSize: '0.85rem' }}>
+              This bill is currently marked as <strong>Paid</strong>. You can revert it to <strong>Unpaid (Pending)</strong> if needed.
+            </Alert>
+          ) : (
+            <TextField
+              label="Payment Amount ₹ *"
+              type="number"
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              fullWidth
+              size="small"
+              inputProps={{ min: 1, max: remaining }}
+            />
+          )}
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, py: 1.5 }}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          variant="contained"
-          onClick={() => onSave(Number(payAmount))}
-          disabled={isLoading || !payAmount || Number(payAmount) <= 0}
-        >
-          {isLoading ? 'Saving...' : 'Submit Payment'}
-        </Button>
+      <DialogActions sx={{ px: 3, py: 1.5, display: 'flex', justifyContent: 'space-between' }}>
+        <Button onClick={onClose} color="inherit">Cancel</Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {(isPaid || paidAmount > 0) && (
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={() => onSave({ status: 'Pending', amount: 0 })}
+              disabled={isLoading}
+            >
+              Revert to Unpaid
+            </Button>
+          )}
+          {!isPaid && (
+            <Button
+              variant="contained"
+              onClick={() => onSave({ amount: Number(payAmount) })}
+              disabled={isLoading || !payAmount || Number(payAmount) <= 0}
+            >
+              {isLoading ? 'Saving...' : 'Submit Payment'}
+            </Button>
+          )}
+        </Box>
       </DialogActions>
     </Dialog>
   );
@@ -446,10 +506,14 @@ const CustomerRow = ({ customer, onEdit }) => {
   const [updateBillPayment, { isLoading: isUpdatingPayment }] = useUpdateBillPaymentMutation();
   const bills = billsData?.data || [];
 
-  const handleRecordPayment = async (amount) => {
+  const handleRecordPayment = async (payload) => {
     if (!paymentBill) return;
     try {
-      await updateBillPayment({ id: paymentBill._id, amount }).unwrap();
+      if (typeof payload === 'number') {
+        await updateBillPayment({ id: paymentBill._id, amount: payload }).unwrap();
+      } else {
+        await updateBillPayment({ id: paymentBill._id, ...payload }).unwrap();
+      }
       setPaymentBill(null);
     } catch (err) {
       alert(err?.data?.message || 'Failed to update payment status');
@@ -551,8 +615,9 @@ const CustomerRow = ({ customer, onEdit }) => {
                               label={b.status}
                               size="small"
                               color={isPaid ? 'success' : isPartial ? 'warning' : 'error'}
-                              onClick={() => !isPaid && setPaymentBill(b)}
-                              sx={{ fontWeight: 700, cursor: isPaid ? 'default' : 'pointer', minWidth: 70 }}
+                              onClick={() => setPaymentBill(b)}
+                              sx={{ fontWeight: 700, cursor: 'pointer', minWidth: 70 }}
+                              title="Click to change or revert payment status"
                             />
                           </TableCell>
                           <TableCell>
@@ -586,9 +651,7 @@ const CustomerRow = ({ customer, onEdit }) => {
         <RecordPaymentDialog
           open={Boolean(paymentBill)}
           onClose={() => setPaymentBill(null)}
-          billNumber={paymentBill.billNumber}
-          totalAmount={paymentBill.finalAmount}
-          paidAmount={paymentBill.paidAmount}
+          bill={paymentBill}
           onSave={handleRecordPayment}
           isLoading={isUpdatingPayment}
         />

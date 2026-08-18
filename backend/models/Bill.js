@@ -96,6 +96,10 @@ const billSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    outstandingAmount: {
+      type: Number,
+      default: 0,
+    },
     finalAmount: {
       type: Number,
       required: true,

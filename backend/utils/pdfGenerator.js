@@ -87,6 +87,15 @@ const generateBillPdfStream = (bill, settings = {}) => {
     });
   }
 
+  // Calculate Totals: Subtotal + GST + Packing Charges + Outstanding = Grand Total
+  const outstandingAmount = typeof bill.outstandingAmount === 'number'
+    ? bill.outstandingAmount
+    : (Number(bill.customer?.pendingCredit) || 0);
+  const subtotal = Number(bill.subtotal) || 0;
+  const gstAmount = Number(bill.gstAmount) || 0;
+  const packingCharges = Number(bill.discount) || 0;
+  const grandTotal = subtotal + gstAmount + packingCharges + outstandingAmount;
+
   const docDefinition = {
     pageSize: 'A4',
     pageMargins: [36, 36, 36, 40],
@@ -170,7 +179,7 @@ const generateBillPdfStream = (bill, settings = {}) => {
               {
                 text: [
                   { text: 'Date: ', bold: true, color: '#475569', fontSize: 9 },
-                  { text: formatDate(bill.createdAt), color: '#0F172A', fontSize: 9 },
+                  { text: formatDate(bill.billDate || bill.createdAt), color: '#0F172A', fontSize: 9 },
                 ],
               },
             ],
@@ -295,11 +304,11 @@ const generateBillPdfStream = (bill, settings = {}) => {
                 : { text: '' },
             ],
           },
-          // Right: Subtotal, Total Qty, GST, Packing Charges, Grand Total
+          // Right: Subtotal, Total Qty, GST, Packing Charges, Outstanding Amount, Grand Total
           {
-            width: 210,
+            width: 220,
             table: {
-              widths: [100, '*'],
+              widths: [110, '*'],
               body: [
                 [
                   { text: 'Total Quantity:', fontSize: 9, color: '#475569', alignment: 'right' },
@@ -313,18 +322,22 @@ const generateBillPdfStream = (bill, settings = {}) => {
                 ],
                 [
                   { text: 'Subtotal:', fontSize: 9, color: '#475569', alignment: 'right' },
-                  { text: formatINR(bill.subtotal), fontSize: 9, color: '#0F172A', alignment: 'right', bold: true },
+                  { text: formatINR(subtotal), fontSize: 9, color: '#0F172A', alignment: 'right', bold: true },
                 ],
                 [
                   { text: 'GST Amount:', fontSize: 9, color: '#475569', alignment: 'right' },
-                  { text: formatINR(bill.gstAmount), fontSize: 9, color: '#0F172A', alignment: 'right', bold: true },
+                  { text: formatINR(gstAmount), fontSize: 9, color: '#0F172A', alignment: 'right', bold: true },
                 ],
-                bill.discount > 0
+                packingCharges > 0
                   ? [
                       { text: 'Packing Charges:', fontSize: 9, color: '#475569', alignment: 'right' },
-                      { text: `+ ${formatINR(bill.discount)}`, fontSize: 9, color: '#0F172A', alignment: 'right', bold: true },
+                      { text: `+ ${formatINR(packingCharges)}`, fontSize: 9, color: '#0F172A', alignment: 'right', bold: true },
                     ]
                   : null,
+                [
+                  { text: 'Outstanding Amount:', fontSize: 9, color: '#475569', alignment: 'right' },
+                  { text: formatINR(outstandingAmount), fontSize: 9, color: outstandingAmount > 0 ? '#DC2626' : '#0F172A', alignment: 'right', bold: true },
+                ],
                 [
                   {
                     text: 'GRAND TOTAL:',
@@ -336,7 +349,7 @@ const generateBillPdfStream = (bill, settings = {}) => {
                     margin: [0, 4, 0, 4],
                   },
                   {
-                    text: formatINR(bill.finalAmount),
+                    text: formatINR(grandTotal),
                     fontSize: 12,
                     bold: true,
                     color: '#FFFFFF',
