@@ -22,13 +22,18 @@ const getCustomers = asyncHandler(async (req, res) => {
 
   const customers = await Customer.find(query).sort({ shopName: 1 });
 
-  // Attach bill count for each customer
+  // Attach bill count and total purchases for each customer
   const customersWithStats = await Promise.all(
     customers.map(async (customer) => {
       const billCount = await Bill.countDocuments({ customer: customer._id, status: { $ne: 'Cancelled' } });
+      const purchaseSum = await Bill.aggregate([
+        { $match: { customer: customer._id, status: { $ne: 'Cancelled' } } },
+        { $group: { _id: null, total: { $sum: '$finalAmount' } } },
+      ]);
       return {
         ...customer.toObject(),
         billCount,
+        totalPurchases: purchaseSum[0]?.total || 0,
       };
     })
   );

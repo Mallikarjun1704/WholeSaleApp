@@ -41,11 +41,11 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
 
   const customerOutstanding = typeof bill.outstandingAmount === 'number'
     ? bill.outstandingAmount
-    : (Number(bill.customer?.pendingCredit) || 0);
+    : 0;
   const subtotal = Number(bill.subtotal) || 0;
   const gstAmount = Number(bill.gstAmount) || 0;
   const packingCharges = Number(bill.discount) || 0;
-  const grandTotal = subtotal + gstAmount + packingCharges + customerOutstanding;
+  const grandTotal = customerOutstanding + subtotal + gstAmount + packingCharges;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -119,7 +119,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
           <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(subtotal)}</strong></Typography>
           <Typography variant="body2" color="text.secondary">GST Amount: <strong>{formatCurrency(gstAmount)}</strong></Typography>
           {packingCharges > 0 && <Typography variant="body2" color="text.secondary">Packing Charges: <strong>+ {formatCurrency(packingCharges)}</strong></Typography>}
-          <Typography variant="body2" color="error.main">Outstanding Amount: <strong>{formatCurrency(customerOutstanding)}</strong></Typography>
+          <Typography variant="body2" color="error.main">Old Outstanding Amount: <strong>{formatCurrency(customerOutstanding)}</strong></Typography>
           <Paper elevation={0} sx={{ p: 1.5, px: 3, bgcolor: 'primary.main', color: '#fff', borderRadius: 2, mt: 1, mb: 1 }}>
             <Typography variant="subtitle1" fontWeight={800}>Grand Total: {formatCurrency(grandTotal)}</Typography>
           </Paper>
@@ -807,9 +807,9 @@ const Billing = () => {
                               label={b.status}
                               size="small"
                               color={isPaid ? 'success' : isPartial ? 'warning' : 'error'}
-                              onClick={() => setPaymentBill(b)}
-                              sx={{ fontWeight: 700, cursor: 'pointer', minWidth: 75 }}
-                              title="Click to change or revert payment status"
+                              onClick={() => !isPaid && setPaymentBill(b)}
+                              sx={{ fontWeight: 700, cursor: isPaid ? 'default' : 'pointer', minWidth: 75 }}
+                              title={isPaid ? 'Fully Paid (Status cannot be changed)' : 'Click to change payment status'}
                             />
                           </TableCell>
                           <TableCell>

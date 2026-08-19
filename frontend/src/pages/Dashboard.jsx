@@ -187,12 +187,33 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
   const { data, isLoading } = useGetDashboardDetailsQuery(detailType, { skip: !open || !detailType });
   const items = data?.data || [];
 
+  const totalStockQty = items.reduce((sum, item) => sum + (Number(item.stock) || 0), 0);
+  const totalPurchaseAmount = items.reduce(
+    (sum, item) => sum + (Number(item.totalPurchasePrice) || ((Number(item.stock) || 0) * (Number(item.purchasePrice) || 0)) || 0),
+    0
+  );
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6" fontWeight={700}>
-          {title || 'Details'}
-        </Typography>
+        <Box>
+          <Typography variant="h6" fontWeight={700}>
+            {title || 'Details'}
+          </Typography>
+          {detailType === 'totalQuantity' && items.length > 0 && (
+            <Stack direction="row" spacing={2} sx={{ mt: 0.5 }} alignItems="center">
+              <Chip
+                label={`Total Purchase Amount: ${formatCurrency(totalPurchaseAmount)}`}
+                color="primary"
+                size="small"
+                sx={{ fontWeight: 700 }}
+              />
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                Total Quantity: <strong>{totalStockQty} Units</strong>
+              </Typography>
+            </Stack>
+          )}
+        </Box>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
@@ -221,7 +242,15 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
                       <TableCell align="right" sx={{ fontWeight: 700 }}>Total Outstanding Amount</TableCell>
                     </>
                   )}
-                  {(detailType === 'totalProducts' || detailType === 'totalQuantity' || detailType === 'totalQuantitySold') && (
+                  {detailType === 'totalQuantity' && (
+                    <>
+                      <TableCell sx={{ fontWeight: 700 }}>Product Name</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>Stock Qty</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Purchase Price</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Total Purchase Amount</TableCell>
+                    </>
+                  )}
+                  {(detailType === 'totalProducts' || detailType === 'totalQuantitySold') && (
                     <>
                       <TableCell sx={{ fontWeight: 700 }}>Product Name</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700 }}>
@@ -250,7 +279,21 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
                         </TableCell>
                       </>
                     )}
-                    {(detailType === 'totalProducts' || detailType === 'totalQuantity' || detailType === 'totalQuantitySold') && (
+                    {detailType === 'totalQuantity' && (
+                      <>
+                        <TableCell><strong>{row.name || 'Unknown Product'}</strong></TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 700 }}>
+                          {row.stock}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>
+                          {formatCurrency(row.purchasePrice || 0)}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                          {formatCurrency(row.totalPurchasePrice || (row.stock * (row.purchasePrice || 0)))}
+                        </TableCell>
+                      </>
+                    )}
+                    {(detailType === 'totalProducts' || detailType === 'totalQuantitySold') && (
                       <>
                         <TableCell><strong>{row.name || 'Unknown Product'}</strong></TableCell>
                         <TableCell align="center" sx={{ fontWeight: 700 }}>
@@ -271,6 +314,16 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
                     )}
                   </TableRow>
                 ))}
+                {detailType === 'totalQuantity' && items.length > 0 && (
+                  <TableRow sx={{ bgcolor: 'action.hover', borderTop: '2px solid', borderColor: 'divider' }}>
+                    <TableCell><strong>Total</strong></TableCell>
+                    <TableCell align="center"><strong>{totalStockQty}</strong></TableCell>
+                    <TableCell align="right">-</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                      {formatCurrency(totalPurchaseAmount)}
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </TableContainer>

@@ -459,9 +459,42 @@ const getDashboardDetails = asyncHandler(async (req, res) => {
       break;
 
     case 'totalQuantity':
-      details = await Product.find({ isActive: true, stock: { $gt: 0 } })
-        .select('name stock')
+      const productsWithStock = await Product.find({ isActive: true, stock: { $gt: 0 } })
+        .select('name sku stock')
         .sort({ name: 1 });
+
+      const detailsWithPricing = await Promise.all(
+        productsWithStock.map(async (prod) => {
+          // Find batches with remaining quantity
+          const activeBatches = await Batch.find({ product: prod._id, remainingQty: { $gt: 0 } }).sort({ createdAt: 1 });
+          let purchasePrice = 0;
+          let totalPurchaseAmount = 0;
+
+          if (activeBatches.length > 0) {
+            const batchVal = activeBatches.reduce((sum, b) => sum + (b.purchasePrice * b.remainingQty), 0);
+            const batchQty = activeBatches.reduce((sum, b) => sum + b.remainingQty, 0);
+            purchasePrice = batchQty > 0 ? Math.round(batchVal / batchQty) : activeBatches[0].purchasePrice;
+            totalPurchaseAmount = purchasePrice * prod.stock;
+          } else {
+            // Check any latest batch for price reference
+            const lastBatch = await Batch.findOne({ product: prod._id }).sort({ createdAt: -1 });
+            if (lastBatch) {
+              purchasePrice = lastBatch.purchasePrice || 0;
+              totalPurchaseAmount = purchasePrice * prod.stock;
+            }
+          }
+
+          return {
+            _id: prod._id,
+            name: prod.name,
+            sku: prod.sku,
+            stock: prod.stock,
+            purchasePrice,
+            totalPurchasePrice: totalPurchaseAmount,
+          };
+        })
+      );
+      details = detailsWithPricing;
       break;
 
     case 'totalQuantitySold':

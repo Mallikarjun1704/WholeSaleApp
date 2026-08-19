@@ -87,14 +87,14 @@ const generateBillPdfStream = (bill, settings = {}) => {
     });
   }
 
-  // Calculate Totals: Subtotal + GST + Packing Charges + Outstanding = Grand Total
+  // Calculate Totals: Old Outstanding Amount + Current Bill Amount (Subtotal) + GST + Package charge (Packing Charges) = Grand Total
   const outstandingAmount = typeof bill.outstandingAmount === 'number'
     ? bill.outstandingAmount
     : (Number(bill.customer?.pendingCredit) || 0);
   const subtotal = Number(bill.subtotal) || 0;
   const gstAmount = Number(bill.gstAmount) || 0;
   const packingCharges = Number(bill.discount) || 0;
-  const grandTotal = subtotal + gstAmount + packingCharges + outstandingAmount;
+  const grandTotal = outstandingAmount + subtotal + gstAmount + packingCharges;
 
   const docDefinition = {
     pageSize: 'A4',
@@ -335,7 +335,7 @@ const generateBillPdfStream = (bill, settings = {}) => {
                     ]
                   : null,
                 [
-                  { text: 'Outstanding Amount:', fontSize: 9, color: '#475569', alignment: 'right' },
+                  { text: 'Old Outstanding Amount:', fontSize: 9, color: '#475569', alignment: 'right' },
                   { text: formatINR(outstandingAmount), fontSize: 9, color: outstandingAmount > 0 ? '#DC2626' : '#0F172A', alignment: 'right', bold: true },
                 ],
                 [

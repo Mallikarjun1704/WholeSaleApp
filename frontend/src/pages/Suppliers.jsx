@@ -739,6 +739,7 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
         <TableCell>{supplier.address || '-'}</TableCell>
         <TableCell>{supplier.gstNumber || '-'}</TableCell>
         <TableCell align="center">{supplier.purchaseCount || 0}</TableCell>
+        <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(supplier.totalPurchases)}</TableCell>
         <TableCell align="right">
           <Chip label={formatCurrency(supplier.unpaidAmount)} size="small" color={supplier.unpaidAmount > 0 ? 'warning' : 'success'} variant="outlined" sx={{ fontWeight: 700 }} />
         </TableCell>
@@ -749,7 +750,7 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
         </TableCell>
       </TableRow>
       <TableRow>
-        <TableCell colSpan={8} sx={{ py: 0, bgcolor: (theme) => alpha(theme.palette.primary.main, 0.02) }}>
+        <TableCell colSpan={9} sx={{ py: 0, bgcolor: (theme) => alpha(theme.palette.primary.main, 0.02) }}>
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box sx={{ py: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -947,6 +948,7 @@ const Suppliers = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Address</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>GST</TableCell>
                 <TableCell align="center" sx={{ fontWeight: 700 }}>Bills</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700 }}>Total Purchase</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700 }}>Unpaid</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
@@ -954,7 +956,7 @@ const Suppliers = () => {
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
-                  <TableRow key={i}>{Array.from({ length: 8 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
+                  <TableRow key={i}>{Array.from({ length: 9 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
                 ))
               ) : suppliers.length > 0 ? (
                 suppliers.map((s) => (
@@ -969,7 +971,7 @@ const Suppliers = () => {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                  <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                     No suppliers found. Click "Add Supplier" to get started.
                   </TableCell>
                 </TableRow>

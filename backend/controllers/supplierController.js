@@ -20,18 +20,23 @@ const getSuppliers = asyncHandler(async (req, res) => {
 
   const suppliers = await Supplier.find(query).sort({ name: 1 });
 
-  // Attach purchase count and total owed for each supplier
+  // Attach purchase count, total purchases, and total owed for each supplier
   const suppliersWithStats = await Promise.all(
     suppliers.map(async (supplier) => {
       const purchaseCount = await Purchase.countDocuments({ supplier: supplier._id });
-      const unpaidPurchases = await Purchase.aggregate([
-        { $match: { supplier: supplier._id, paymentStatus: 'Unpaid' } },
+      const totalPurchasesAgg = await Purchase.aggregate([
+        { $match: { supplier: supplier._id } },
         { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+      ]);
+      const unpaidPurchases = await Purchase.aggregate([
+        { $match: { supplier: supplier._id, paymentStatus: { $in: ['Unpaid', 'Partially Paid'] } } },
+        { $group: { _id: null, total: { $sum: { $subtract: ['$totalAmount', { $ifNull: ['$paidAmount', 0] }] } } } },
       ]);
       return {
         ...supplier.toObject(),
         purchaseCount,
-        unpaidAmount: unpaidPurchases[0]?.total || 0,
+        totalPurchases: totalPurchasesAgg[0]?.total || 0,
+        unpaidAmount: Math.max(0, unpaidPurchases[0]?.total || 0),
       };
     })
   );

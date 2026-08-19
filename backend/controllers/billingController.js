@@ -279,6 +279,14 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Bill not found' });
   }
 
+  // Prevent changing payment status if the customer has fully paid and status is already 'Paid'
+  if (bill.status === 'Paid' && (bill.paidAmount || 0) >= (bill.finalAmount || 0)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Payment status cannot be changed for a fully paid bill',
+    });
+  }
+
   const billTotal = bill.finalAmount || 0;
   const currentPaid = bill.paidAmount || 0;
   let newPaidAmount = currentPaid;
@@ -365,7 +373,7 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
 
   await bill.save();
 
-  // Recalculate customer's pending credit from all unpaid/partial bills to ensure 100% precision
+  // Recalculate customer's pending credit from all unpaid bills
   if (bill.customer) {
     const remainingBillsAgg = await Bill.aggregate([
       { $match: { customer: bill.customer, status: { $in: ['Pending', 'Partially Paid'] } } },
@@ -402,17 +410,21 @@ const getBillPdf = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Bill not found' });
   }
 
-  // Determine current customer outstanding amount (for both old and new bills)
-  let currentOutstanding = 0;
-  if (bill.customer) {
-    if (typeof bill.customer.pendingCredit === 'number') {
-      currentOutstanding = bill.customer.pendingCredit;
-    } else {
-      const cust = await Customer.findById(bill.customer._id || bill.customer);
-      currentOutstanding = cust?.pendingCredit || 0;
+  // Use saved bill.outstandingAmount (which is the Old Outstanding Amount when the bill was created)
+  // If not saved (e.g. legacy bill), calculate old outstanding from customer's pending credit
+  if (typeof bill.outstandingAmount !== 'number') {
+    let custPending = 0;
+    if (bill.customer) {
+      if (typeof bill.customer.pendingCredit === 'number') {
+        custPending = bill.customer.pendingCredit;
+      } else {
+        const cust = await Customer.findById(bill.customer._id || bill.customer);
+        custPending = cust?.pendingCredit || 0;
+      }
     }
+    const billUnpaid = Math.max(0, (bill.finalAmount || 0) - (bill.paidAmount || 0));
+    bill.outstandingAmount = Math.max(0, custPending - billUnpaid);
   }
-  bill.outstandingAmount = currentOutstanding;
 
   // Format filename as shopName_date_indexValue.pdf
   const rawShopName = bill.customer?.shopName || bill.customer?.ownerName || bill.customer?.name || 'Customer';

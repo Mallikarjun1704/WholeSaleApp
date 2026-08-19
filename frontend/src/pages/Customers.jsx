@@ -3,6 +3,7 @@ import {
   Box, Typography, Card, Button, TextField, InputAdornment, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, Collapse, Skeleton, alpha, Divider, Stack, Grid, Select, MenuItem, FormControl, InputLabel,
+  Paper, Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -54,11 +55,12 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
 
   const customerOutstanding = typeof bill.outstandingAmount === 'number'
     ? bill.outstandingAmount
-    : (Number(bill.customer?.pendingCredit) || 0);
+    : 0;
   const subtotal = Number(bill.subtotal) || 0;
   const gstAmount = Number(bill.gstAmount) || 0;
   const packingCharges = Number(bill.discount) || 0;
-  const grandTotal = subtotal + gstAmount + packingCharges + customerOutstanding;
+  const grandTotal = customerOutstanding + subtotal + gstAmount + packingCharges;
+  const items = Array.isArray(bill.items) ? bill.items : [];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -90,14 +92,21 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {bill.items.map((item, idx) => (
+            {items.map((item, idx) => (
               <TableRow key={idx}>
-                <TableCell>{item.name}</TableCell>
-                <TableCell align="center">{item.quantity}</TableCell>
-                <TableCell align="right">{formatCurrency(item.sellingPrice)}</TableCell>
-                <TableCell align="right">{formatCurrency(item.total)}</TableCell>
+                <TableCell>{item.name || item.product?.name || 'Item'}</TableCell>
+                <TableCell align="center">{item.quantity || 0}</TableCell>
+                <TableCell align="right">{formatCurrency(item.sellingPrice || item.unitPrice || 0)}</TableCell>
+                <TableCell align="right">{formatCurrency(item.total || ((item.quantity || 0) * (item.sellingPrice || 0)))}</TableCell>
               </TableRow>
             ))}
+            {items.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={4} align="center" sx={{ color: 'text.secondary', py: 2 }}>
+                  No item details found.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
 
@@ -107,7 +116,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
           <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(subtotal)}</strong></Typography>
           <Typography variant="body2" color="text.secondary">GST Amount: <strong>{formatCurrency(gstAmount)}</strong></Typography>
           {packingCharges > 0 && <Typography variant="body2" color="text.secondary">Packing Charges: <strong>+ {formatCurrency(packingCharges)}</strong></Typography>}
-          <Typography variant="body2" color="error.main">Outstanding Amount: <strong>{formatCurrency(customerOutstanding)}</strong></Typography>
+          <Typography variant="body2" color="error.main">Old Outstanding Amount: <strong>{formatCurrency(customerOutstanding)}</strong></Typography>
           <Paper elevation={0} sx={{ p: 1.5, px: 3, bgcolor: 'primary.main', color: '#fff', borderRadius: 2, mt: 1, mb: 1 }}>
             <Typography variant="subtitle1" fontWeight={800}>Grand Total: {formatCurrency(grandTotal)}</Typography>
           </Paper>
@@ -534,6 +543,7 @@ const CustomerRow = ({ customer, onEdit }) => {
         <TableCell>{customer.address || '-'}</TableCell>
         <TableCell>{customer.gstNumber || '-'}</TableCell>
         <TableCell align="center">{customer.billCount || 0}</TableCell>
+        <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(customer.totalPurchases)}</TableCell>
         <TableCell align="right">
           <Chip
             label={formatCurrency(customer.pendingCredit)}
@@ -561,7 +571,7 @@ const CustomerRow = ({ customer, onEdit }) => {
         </TableCell>
       </TableRow>
       <TableRow>
-        <TableCell colSpan={9} sx={{ py: 0, bgcolor: (theme) => alpha(theme.palette.primary.main, 0.02) }}>
+        <TableCell colSpan={10} sx={{ py: 0, bgcolor: (theme) => alpha(theme.palette.primary.main, 0.02) }}>
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box sx={{ py: 2 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
@@ -615,9 +625,9 @@ const CustomerRow = ({ customer, onEdit }) => {
                               label={b.status}
                               size="small"
                               color={isPaid ? 'success' : isPartial ? 'warning' : 'error'}
-                              onClick={() => setPaymentBill(b)}
-                              sx={{ fontWeight: 700, cursor: 'pointer', minWidth: 70 }}
-                              title="Click to change or revert payment status"
+                              onClick={() => !isPaid && setPaymentBill(b)}
+                              sx={{ fontWeight: 700, cursor: isPaid ? 'default' : 'pointer', minWidth: 70 }}
+                              title={isPaid ? 'Fully Paid (Status cannot be changed)' : 'Click to change payment status'}
                             />
                           </TableCell>
                           <TableCell>
@@ -738,6 +748,7 @@ const Customers = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Address</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>GST</TableCell>
                 <TableCell align="center" sx={{ fontWeight: 700 }}>Bills Count</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700 }}>Total Purchase</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700 }}>Pending Owed</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
@@ -745,13 +756,13 @@ const Customers = () => {
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
-                  <TableRow key={i}>{Array.from({ length: 9 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
+                  <TableRow key={i}>{Array.from({ length: 10 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
                 ))
               ) : customers.length > 0 ? (
                 customers.map((c) => <CustomerRow key={c._id} customer={c} onEdit={handleEdit} />)
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                     No retail stores found. Click "Add Retail Store" to register one.
                   </TableCell>
                 </TableRow>
