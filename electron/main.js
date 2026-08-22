@@ -12,13 +12,13 @@ const PORT = process.env.PORT || 5000;
 if (!isDev) {
   process.env.NODE_ENV = 'production';
   if (!process.env.MONGO_URI) {
-    process.env.MONGO_URI = 'mongodb://127.0.0.1:27017/techmart';
+    process.env.MONGO_URI = 'mongodb://127.0.0.1:27017/tmw';
   }
   if (!process.env.JWT_SECRET) {
-    process.env.JWT_SECRET = 'techmart_jwt_secret_key_2026_packaged_electron';
+    process.env.JWT_SECRET = 'tmw_jwt_secret_key_2026_packaged_electron';
   }
   if (!process.env.JWT_REFRESH_SECRET) {
-    process.env.JWT_REFRESH_SECRET = 'techmart_refresh_secret_key_2026_packaged_electron';
+    process.env.JWT_REFRESH_SECRET = 'tmw_refresh_secret_key_2026_packaged_electron';
   }
   process.env.PORT = PORT;
 

@@ -1,7 +1,7 @@
 {
-  "name": "tech-mart",
+  "name": "tmw",
   "version": "1.0.0",
-  "description": "TECH MART - Wholesale Mobile Store Management System",
+  "description": "TMW - Wholesale Mobile Store Management System",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -24,7 +24,7 @@
     "billing",
     "pos"
   ],
-  "author": "TECH MART",
+  "author": "TMW",
   "license": "UNLICENSED",
   "devDependencies": {
     "concurrently": "^8.2.2",
@@ -32,8 +32,8 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.techmart.wholesale",
-    "productName": "Tech Mart",
+    "appId": "com.tmw.wholesale",
+    "productName": "TMW",
     "directories": {
       "output": "dist-electron"
     },

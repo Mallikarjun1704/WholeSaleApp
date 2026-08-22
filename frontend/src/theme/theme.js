@@ -180,6 +180,32 @@ export const darkTheme = createTheme({
         },
       },
     },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 10,
+          '& fieldset': {
+            borderColor: alpha('#94A3B8', 0.2),
+          },
+          '&:hover fieldset': {
+            borderColor: alpha('#6366F1', 0.5),
+          },
+          '&.Mui-focused fieldset': {
+            borderColor: '#6366F1',
+          },
+        },
+        input: {
+          '&[type=number]': {
+            MozAppearance: 'textfield',
+            appearance: 'textfield',
+            '&::-webkit-outer-spin-button, &::-webkit-inner-spin-button': {
+              WebkitAppearance: 'none',
+              margin: 0,
+            },
+          },
+        },
+      },
+    },
     MuiTextField: {
       styleOverrides: {
         root: {

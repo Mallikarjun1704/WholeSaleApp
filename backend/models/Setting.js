@@ -5,7 +5,7 @@ const settingSchema = new mongoose.Schema(
     // Shop Information
     storeName: {
       type: String,
-      default: 'TECH MART',
+      default: 'TMW',
     },
     logo: {
       type: String, // Base64 or file path
@@ -54,9 +54,9 @@ const settingSchema = new mongoose.Schema(
 
     // Invoice Settings
     invoice: {
-      prefix: { type: String, default: 'TM' },
+      prefix: { type: String, default: 'TMW' },
       counter: { type: Number, default: 0 },
-      format: { type: String, default: 'TM-{YEAR}-{NUMBER}' }, // e.g., TM-2026-0001
+      format: { type: String, default: 'TMW-{YEAR}-{NUMBER}' }, // e.g., TMW-2026-0001
       financialYearStart: { type: Number, default: 4 }, // April
       termsAndConditions: { type: String, default: '' },
     },

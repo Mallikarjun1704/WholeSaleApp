@@ -3,7 +3,7 @@ import { createSlice } from '@reduxjs/toolkit';
 // Load persisted auth state from localStorage
 const loadAuthState = () => {
   try {
-    const serialized = localStorage.getItem('techmart_auth');
+    const serialized = localStorage.getItem('tmw_auth');
     if (serialized) {
       return JSON.parse(serialized);
     }
@@ -33,7 +33,7 @@ const authSlice = createSlice({
 
       // Persist to localStorage
       localStorage.setItem(
-        'techmart_auth',
+        'tmw_auth',
         JSON.stringify({
           user,
           accessToken,
@@ -48,9 +48,9 @@ const authSlice = createSlice({
       state.refreshToken = refreshToken;
 
       // Update localStorage
-      const stored = JSON.parse(localStorage.getItem('techmart_auth') || '{}');
+      const stored = JSON.parse(localStorage.getItem('tmw_auth') || '{}');
       localStorage.setItem(
-        'techmart_auth',
+        'tmw_auth',
         JSON.stringify({
           ...stored,
           accessToken,
@@ -63,13 +63,13 @@ const authSlice = createSlice({
       state.accessToken = null;
       state.refreshToken = null;
       state.isAuthenticated = false;
-      localStorage.removeItem('techmart_auth');
+      localStorage.removeItem('tmw_auth');
     },
     updateUser: (state, action) => {
       state.user = { ...state.user, ...action.payload };
-      const stored = JSON.parse(localStorage.getItem('techmart_auth') || '{}');
+      const stored = JSON.parse(localStorage.getItem('tmw_auth') || '{}');
       localStorage.setItem(
-        'techmart_auth',
+        'tmw_auth',
         JSON.stringify({ ...stored, user: state.user })
       );
     },

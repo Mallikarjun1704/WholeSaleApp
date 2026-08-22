@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/techmart', {
+    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/tmw', {
       // Mongoose 8 defaults are good, but we set these for clarity
       serverSelectionTimeoutMS: 5000,
       heartbeatFrequencyMS: 10000,

@@ -46,7 +46,7 @@ const Setup = () => {
   });
 
   const [shopData, setShopData] = useState({
-    storeName: 'TECH MART',
+    storeName: 'TMW',
     gstNumber: '',
     phone: '',
     email: '',
@@ -169,7 +169,7 @@ const Setup = () => {
               System Setup Wizard
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Initialize TECH MART and configure your store settings
+              Initialize TMW and configure your store settings
             </Typography>
           </Box>
 

@@ -4,7 +4,7 @@
 
 export const getAuthToken = () => {
   try {
-    const authData = JSON.parse(localStorage.getItem('techmart_auth') || '{}');
+    const authData = JSON.parse(localStorage.getItem('tmw_auth') || '{}');
     return authData?.accessToken || '';
   } catch (e) {
     return '';

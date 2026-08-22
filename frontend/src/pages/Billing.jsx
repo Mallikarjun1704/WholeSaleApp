@@ -59,10 +59,10 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
             boxShadow: '0 6px 16px rgba(99, 102, 241, 0.4)',
             border: '2px solid rgba(255, 255, 255, 0.3)',
           }}>
-            TM
+            TMW
           </Box>
           <Box>
-            <Typography variant="h6" fontWeight={900} sx={{ background: 'linear-gradient(135deg, #6366F1, #0EA5E9)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>TECH MART</Typography>
+            <Typography variant="h6" fontWeight={900} sx={{ background: 'linear-gradient(135deg, #6366F1, #0EA5E9)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>TMW</Typography>
             <Typography variant="caption" color="text.secondary" fontWeight={700}>Wholesale Bill #{bill.billNumber}</Typography>
           </Box>
         </Box>
@@ -728,14 +728,14 @@ const Billing = () => {
             boxShadow: '0 8px 20px rgba(99, 102, 241, 0.35)',
             border: '2px solid rgba(255, 255, 255, 0.4)',
           }}>
-            TM
+            TMW
           </Box>
           <Box>
             <Typography variant="h4" fontWeight={900} sx={{ background: 'linear-gradient(135deg, #6366F1, #0EA5E9)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>
-              TECH MART Billing
+              TMW Billing
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Generate sales bills with TM branding, total quantities, and PDF export.
+              Generate sales bills with TMW branding, total quantities, and PDF export.
             </Typography>
           </Box>
         </Box>

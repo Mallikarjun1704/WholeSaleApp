@@ -17,7 +17,7 @@ const printer = new PdfPrinter(fonts);
  */
 const formatINR = (val) => {
   const num = Number(val) || 0;
-  return '₹ ' + num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return 'Rs. ' + num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 /**

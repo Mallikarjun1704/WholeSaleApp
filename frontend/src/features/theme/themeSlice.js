@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 
 const loadThemeMode = () => {
   try {
-    return localStorage.getItem('techmart_theme') || 'dark';
+    return localStorage.getItem('tmw_theme') || 'dark';
   } catch {
     return 'dark';
   }
@@ -17,11 +17,11 @@ const themeSlice = createSlice({
   reducers: {
     toggleTheme: (state) => {
       state.mode = state.mode === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('techmart_theme', state.mode);
+      localStorage.setItem('tmw_theme', state.mode);
     },
     setThemeMode: (state, action) => {
       state.mode = action.payload;
-      localStorage.setItem('techmart_theme', action.payload);
+      localStorage.setItem('tmw_theme', action.payload);
     },
     toggleSidebar: (state) => {
       state.sidebarOpen = !state.sidebarOpen;

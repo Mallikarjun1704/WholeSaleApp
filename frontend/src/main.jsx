@@ -23,6 +23,18 @@ const globalStyles = `
     transition: background-color 0.2s ease, color 0.1s ease, border-color 0.2s ease;
   }
 
+  /* Remove up/down spin arrows from number inputs */
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+  }
+
+  input[type=number] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+  }
+
   /* Print styles */
   @media print {
     .no-print {
@@ -35,6 +47,13 @@ const globalStyles = `
 const style = document.createElement('style');
 style.textContent = globalStyles;
 document.head.appendChild(style);
+
+// Prevent mouse wheel scrolling from changing number input values
+document.addEventListener('wheel', () => {
+  if (document.activeElement && document.activeElement.type === 'number') {
+    document.activeElement.blur();
+  }
+}, { passive: true });
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

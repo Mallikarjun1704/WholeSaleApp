@@ -153,7 +153,7 @@ const Login = () => {
                 mb: 0.5,
               }}
             >
-              TECH MART
+              TMW
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Wholesale Mobile Store Management
@@ -270,7 +270,7 @@ const Login = () => {
             color="text.secondary"
             sx={{ display: 'block', textAlign: 'center', mt: 3 }}
           >
-            © {new Date().getFullYear()} TECH MART. All rights reserved.
+            © {new Date().getFullYear()} TMW. All rights reserved.
           </Typography>
         </CardContent>
       </Card>

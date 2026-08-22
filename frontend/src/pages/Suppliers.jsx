@@ -308,8 +308,9 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 3, flexWrap: 'wrap' }}>
             <Typography variant="body2" color="text.secondary">Total Quantity: <strong>{items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)} Units</strong></Typography>
             <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(subtotal)}</strong></Typography>
+            <Typography variant="body2" color="text.secondary">Travel: <strong>{formatCurrency(travelChargeVal)}</strong></Typography>
+            <Typography variant="body2" color="text.secondary">Total Bill: <strong>{formatCurrency(subtotal + travelChargeVal)}</strong></Typography>
             <Typography variant="body2" color="text.secondary">Commission: <strong>{formatCurrency(commAmount)}</strong></Typography>
-            <Typography variant="body2" color="text.secondary">Travel: <strong>{formatCurrency(Number(form.travelCharge) || 0)}</strong></Typography>
             <Typography variant="subtitle1" fontWeight={800} color="primary.main">Total: {formatCurrency(totalAmount)}</Typography>
           </Box>
 
@@ -427,13 +428,16 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
     });
   };
 
-  if (!purchase) return null;
+  if (!purchase || purchase.paymentStatus === 'Paid') return null;
 
   return (
     <>
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 700 }}>Edit Purchase Bill: #{purchase.invoiceNumber}</DialogTitle>
         <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Editing and saving this bill will reset its payment status to <strong>Unpaid</strong> so that payment can be submitted again.
+          </Alert>
           {errorMsg && <Alert severity="error" sx={{ mb: 2 }}>{errorMsg}</Alert>}
           <Stack spacing={2} sx={{ mt: 0.5 }}>
             <Grid container spacing={2}>
@@ -533,10 +537,13 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
               Subtotal: <strong>{formatCurrency(subtotal)}</strong>
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Commission: <strong>{formatCurrency(commAmount)}</strong>
+              Travel: <strong>{formatCurrency(travelChargeVal)}</strong>
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Travel: <strong>{formatCurrency(travelChargeVal)}</strong>
+              Total Bill: <strong>{formatCurrency(subtotal + travelChargeVal)}</strong>
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Commission: <strong>{formatCurrency(commAmount)}</strong>
             </Typography>
             <Typography variant="subtitle1" fontWeight={800} color="primary.main">
               Total: {formatCurrency(totalAmount)}
@@ -574,10 +581,11 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
 };
 
 // ========== View Purchase Bill Dialog ==========
-const ViewPurchaseDialog = ({ open, onClose, purchase }) => {
+const ViewPurchaseDialog = ({ open, onClose, purchase, isAdmin, onEdit }) => {
   if (!purchase) return null;
   const paid = purchase.paidAmount || 0;
   const remaining = Math.max(0, purchase.totalAmount - paid);
+  const totalBill = (Number(purchase.subtotal) || 0) + (Number(purchase.travelCharge) || 0);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -624,8 +632,9 @@ const ViewPurchaseDialog = ({ open, onClose, purchase }) => {
 
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
           <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(purchase.subtotal)}</strong></Typography>
-          <Typography variant="body2" color="text.secondary">Commission ({purchase.commissionPercent}%): <strong>{formatCurrency(purchase.commissionAmount)}</strong></Typography>
           <Typography variant="body2" color="text.secondary">Travel Charge: <strong>{formatCurrency(purchase.travelCharge)}</strong></Typography>
+          <Typography variant="body2" color="primary.main" fontWeight={700}>Total Bill (Subtotal + Travel): <strong>{formatCurrency(totalBill)}</strong></Typography>
+          <Typography variant="body2" color="text.secondary">Commission ({purchase.commissionPercent}%): <strong>{formatCurrency(purchase.commissionAmount)}</strong></Typography>
           <Typography variant="subtitle1" fontWeight={800} color="primary.main" sx={{ mt: 0.5 }}>Grand Total: {formatCurrency(purchase.totalAmount)}</Typography>
           <Typography variant="body2" color="success.main">Amount Paid: <strong>{formatCurrency(paid)}</strong></Typography>
           {remaining > 0 && (
@@ -640,7 +649,20 @@ const ViewPurchaseDialog = ({ open, onClose, purchase }) => {
           </Box>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
+      <DialogActions sx={{ px: 3, pb: 2, justifyContent: isAdmin && onEdit && purchase.paymentStatus !== 'Paid' ? 'space-between' : 'flex-end' }}>
+        {isAdmin && onEdit && purchase.paymentStatus !== 'Paid' && (
+          <Button
+            variant="contained"
+            color="warning"
+            startIcon={<EditIcon />}
+            onClick={() => {
+              onClose();
+              onEdit(purchase);
+            }}
+          >
+            Edit Purchase Bill
+          </Button>
+        )}
         <Button onClick={onClose} variant="outlined">Close</Button>
       </DialogActions>
     </Dialog>
@@ -770,8 +792,10 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                       <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Purchase Date</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Items</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Qty</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Subtotal</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Commission</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Travel Charge</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Total Bill</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Total</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Paid</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Remaining</TableCell>
@@ -782,6 +806,9 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                   <TableBody>
                     {purchases.map((p) => {
                       const totalQty = p.items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0;
+                      const subtotal = Number(p.subtotal) || 0;
+                      const travelCharge = Number(p.travelCharge) || 0;
+                      const totalBill = subtotal + travelCharge;
                       const paid = p.paidAmount || 0;
                       const remaining = Math.max(0, p.totalAmount - paid);
                       const isPaid = p.paymentStatus === 'Paid';
@@ -793,8 +820,10 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                           <TableCell sx={{ fontSize: '0.8rem' }}>{formatDateDDMMYYYY(p.purchaseDate || p.createdAt)}</TableCell>
                           <TableCell align="center" sx={{ fontSize: '0.8rem' }}>{p.items?.length || 0}</TableCell>
                           <TableCell align="center" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{totalQty}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(subtotal)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(p.commissionAmount || 0)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(p.travelCharge || 0)}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatCurrency(totalBill)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatCurrency(p.totalAmount)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', color: 'success.main' }}>{formatCurrency(paid)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700, color: remaining > 0 ? 'error.main' : 'text.secondary' }}>
@@ -814,7 +843,7 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                               <IconButton size="small" color="primary" onClick={() => setViewPurchase(p)} title="View bill details">
                                 <ViewIcon fontSize="small" />
                               </IconButton>
-                              {!isPaid && isAdmin && (
+                              {isAdmin && !isPaid && (
                                 <IconButton size="small" color="warning" onClick={() => setEditingPurchase(p)} title="Edit Purchase Bill">
                                   <EditIcon fontSize="small" />
                                 </IconButton>
@@ -851,6 +880,8 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
           open={Boolean(viewPurchase)}
           onClose={() => setViewPurchase(null)}
           purchase={viewPurchase}
+          isAdmin={isAdmin}
+          onEdit={(p) => setEditingPurchase(p)}
         />
       )}
 

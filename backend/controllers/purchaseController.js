@@ -369,7 +369,7 @@ const updatePurchase = asyncHandler(async (req, res) => {
   if (purchase.paymentStatus === 'Paid') {
     return res.status(400).json({
       success: false,
-      message: 'This purchase bill has been fully paid and cannot be edited.',
+      message: 'Once fully paid, the purchase bill cannot be edited.',
     });
   }
 
@@ -446,9 +446,7 @@ const updatePurchase = asyncHandler(async (req, res) => {
   const travel = travelCharge !== undefined ? Number(travelCharge) : purchase.travelCharge;
   const commAmount = Math.round(((purchase.subtotal + travel) * commPercent) / 100);
 
-  const oldTotal = purchase.totalAmount;
   const newTotal = purchase.subtotal + commAmount + travel;
-  const diff = newTotal - oldTotal;
 
   purchase.commissionPercent = commPercent;
   purchase.travelCharge = travel;
@@ -482,23 +480,29 @@ const updatePurchase = asyncHandler(async (req, res) => {
     }
   }
 
-  // Adjust payment status if total changed
-  const paid = purchase.paidAmount || 0;
-  if (paid >= newTotal) {
-    purchase.paymentStatus = 'Paid';
-    purchase.paidDate = new Date();
-  } else if (paid > 0) {
-    purchase.paymentStatus = 'Partially Paid';
-  } else {
-    purchase.paymentStatus = 'Unpaid';
-  }
+  // Reset payment status to Unpaid and clear paidAmount so payment can be submitted again
+  purchase.paidAmount = 0;
+  purchase.paymentStatus = 'Unpaid';
+  purchase.paidDate = null;
 
   await purchase.save();
 
-  // Update supplier pending debt
-  if (diff !== 0 && purchase.supplier) {
+  // Recalculate supplier pending credit (unpaid balance) accurately
+  if (purchase.supplier) {
+    const unpaidPurchases = await Purchase.aggregate([
+      { $match: { supplier: purchase.supplier } },
+      {
+        $project: {
+          remaining: {
+            $max: [{ $subtract: ['$totalAmount', { $ifNull: ['$paidAmount', 0] }] }, 0],
+          },
+        },
+      },
+      { $group: { _id: null, totalPending: { $sum: '$remaining' } } },
+    ]);
+    const newPendingCredit = unpaidPurchases[0]?.totalPending || 0;
     await Supplier.findByIdAndUpdate(purchase.supplier, {
-      $inc: { pendingCredit: diff },
+      pendingCredit: Math.max(0, Math.round(newPendingCredit)),
     });
   }
 

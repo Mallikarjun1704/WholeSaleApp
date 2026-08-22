@@ -151,10 +151,9 @@ const MainLayout = () => {
           {sidebarOpen && (
             <Box>
               <Typography
-                variant="h6"
+                variant="subtitle1"
+                fontWeight={800}
                 sx={{
-                  fontWeight: 800,
-                  fontSize: '1.1rem',
                   background: 'linear-gradient(135deg, #6366F1, #0EA5E9)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
@@ -162,7 +161,7 @@ const MainLayout = () => {
                   lineHeight: 1.2,
                 }}
               >
-                TECH MART
+                TMW
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
                 Wholesale Mobile Store
@@ -259,7 +258,7 @@ const MainLayout = () => {
 
             <Typography variant="h6" noWrap sx={{ fontWeight: 600, fontSize: '1rem' }}>
               {menuItems.find((item) => isActivePath(item.path))?.text ||
-                (location.pathname.startsWith('/settings') ? 'Settings' : 'TECH MART')}
+                (location.pathname.startsWith('/settings') ? 'Settings' : 'TMW')}
             </Typography>
 
             <Box sx={{ flex: 1 }} />
