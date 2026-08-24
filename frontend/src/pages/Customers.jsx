@@ -21,6 +21,7 @@ import {
 } from '../api/customerApi';
 import { useGetBillsByCustomerQuery, useUpdateBillPaymentMutation } from '../api/billingApi';
 import { downloadBillPdf, openBillPdf, downloadCustomerStatementPdf } from '../utils/pdfUtils';
+import { getLocalDateString } from '../utils/dateUtils';
 
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
@@ -147,7 +148,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
 const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
   const [payAmount, setPayAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(getLocalDateString());
   const [note, setNote] = useState('');
 
   React.useEffect(() => {
@@ -157,7 +158,7 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
       const rem = Math.max(0, total - paid);
       setPayAmount(rem > 0 ? rem : total);
       setPaymentMethod('Cash');
-      setPaymentDate(new Date().toISOString().slice(0, 10));
+      setPaymentDate(getLocalDateString());
       setNote('');
     }
   }, [open, bill]);
@@ -287,7 +288,7 @@ const CustomerBulkPaymentDialog = ({ open, onClose, customer }) => {
 
   const [payAmount, setPayAmount] = useState(totalOwed);
   const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(getLocalDateString());
   const [note, setNote] = useState('');
 
   React.useEffect(() => {
@@ -549,8 +550,8 @@ const CustomerPaymentHistoryDialog = ({ open, onClose, customer }) => {
 // ========== Customer Statement & Date Filter Dialog ==========
 const CustomerStatementDialog = ({ open, onClose, customer }) => {
   const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const today = now.toISOString().slice(0, 10);
+  const firstDay = getLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+  const today = getLocalDateString(now);
 
   const [startDate, setStartDate] = useState(firstDay);
   const [endDate, setEndDate] = useState(today);

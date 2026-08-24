@@ -22,6 +22,7 @@ import {
 import { useGetCustomersQuery } from '../api/customerApi';
 import { useGetInventoryQuery } from '../api/inventoryApi';
 import { downloadBillPdf, openBillPdf } from '../utils/pdfUtils';
+import { getLocalDateString } from '../utils/dateUtils';
 
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
@@ -150,7 +151,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
 const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading }) => {
   const [packingCharges, setPackingCharges] = useState(bill?.discount || 0);
   const [billDate, setBillDate] = useState(
-    bill?.billDate ? new Date(bill.billDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
+    bill?.billDate ? getLocalDateString(bill.billDate) : getLocalDateString()
   );
   const [items, setItems] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
@@ -159,7 +160,7 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
     if (bill) {
       setPackingCharges(bill.discount || 0);
       setBillDate(
-        bill.billDate ? new Date(bill.billDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
+        bill.billDate ? getLocalDateString(bill.billDate) : getLocalDateString()
       );
       setItems(
         (bill.items || []).map((item) => ({
@@ -339,7 +340,7 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
 const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
   const [payAmount, setPayAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(getLocalDateString());
   const [note, setNote] = useState('');
 
   React.useEffect(() => {
@@ -349,7 +350,7 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
       const rem = Math.max(0, total - paid);
       setPayAmount(rem > 0 ? rem : total);
       setPaymentMethod(bill.paymentMethod || 'Cash');
-      setPaymentDate(new Date().toISOString().slice(0, 10));
+      setPaymentDate(getLocalDateString());
       setNote('');
     }
   }, [open, bill]);
@@ -470,7 +471,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
   const [createBill, { isLoading }] = useCreateBillMutation();
   const [errorMsg, setErrorMsg] = useState('');
   const [customerId, setCustomerId] = useState('');
-  const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 10));
+  const [saleDate, setSaleDate] = useState(getLocalDateString());
   const [packingCharges, setPackingCharges] = useState(0);
   const [items, setItems] = useState([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
   const [createdBill, setCreatedBill] = useState(null);
@@ -540,7 +541,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
       }
 
       setCustomerId('');
-      setSaleDate(new Date().toISOString().slice(0, 10));
+      setSaleDate(getLocalDateString());
       setPackingCharges(0);
       setItems([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
       setErrorMsg('');

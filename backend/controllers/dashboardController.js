@@ -9,6 +9,29 @@ const Expense = require('../models/Expense');
 const ActivityLog = require('../models/ActivityLog');
 const { asyncHandler } = require('../middleware/errorHandler');
 
+const isSameDay = (d1, d2) => {
+  if (!d1 || !d2) return false;
+  const date1 = new Date(d1);
+  const date2 = new Date(d2);
+  return (
+    (date1.getFullYear() === date2.getFullYear() &&
+     date1.getMonth() === date2.getMonth() &&
+     date1.getDate() === date2.getDate()) ||
+    (date1.getUTCFullYear() === date2.getUTCFullYear() &&
+     date1.getUTCMonth() === date2.getUTCMonth() &&
+     date1.getUTCDate() === date2.getUTCDate())
+  );
+};
+
+const isSameMonth = (d, now) => {
+  if (!d || !now) return false;
+  const date = new Date(d);
+  return (
+    (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()) ||
+    (date.getUTCFullYear() === now.getUTCFullYear() && date.getUTCMonth() === now.getUTCMonth())
+  );
+};
+
 /**
  * @desc    Get dashboard statistics
  * @route   GET /api/dashboard/stats
@@ -16,8 +39,6 @@ const { asyncHandler } = require('../middleware/errorHandler');
  */
 const getDashboardStats = asyncHandler(async (req, res) => {
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
@@ -31,48 +52,32 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   ]);
   const totalQuantity = quantityAgg[0]?.totalQty || 0;
 
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  // Retrieve all non-cancelled bills and purchases for accurate calculations
+  const allBills = await Bill.find({ status: { $ne: 'Cancelled' } });
+  const allPurchases = await Purchase.find();
 
-  // 3. Today's Sales (Non-cancelled bills dated today)
-  const todayBills = await Bill.find({
-    status: { $ne: 'Cancelled' },
-    $expr: {
-      $and: [
-        { $gte: [{ $ifNull: ['$billDate', '$createdAt'] }, startOfToday] },
-        { $lte: [{ $ifNull: ['$billDate', '$createdAt'] }, endOfToday] },
-      ],
-    },
-  });
-  const todaySales = todayBills.reduce((sum, bill) => sum + bill.finalAmount, 0);
+  // 3. Today's Sales & Bills (Non-cancelled bills dated today)
+  const todayBills = allBills.filter((b) => isSameDay(b.billDate, now) || isSameDay(b.createdAt, now));
+  const todaySales = todayBills.reduce((sum, bill) => sum + (bill.finalAmount || 0), 0);
 
   // 4. Today's Purchase (All purchase bills dated today)
-  const todayPurchases = await Purchase.find({
-    $expr: {
-      $and: [
-        { $gte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, startOfToday] },
-        { $lte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, endOfToday] },
-      ],
-    },
-  });
-  const todayPurchase = todayPurchases.reduce((sum, purchase) => sum + purchase.totalAmount, 0);
+  const todayPurchases = allPurchases.filter((p) => isSameDay(p.purchaseDate, now) || isSameDay(p.createdAt, now));
+  const todayPurchase = todayPurchases.reduce((sum, purchase) => sum + (purchase.totalAmount || 0), 0);
 
-  // 5. Today's Profit & Loss
+  // 5. Today's Profit & Loss (item-level loss: when sellingPrice < purchasePrice)
   let todayProfit = 0;
   let todayLoss = 0;
   for (const bill of todayBills) {
-    let billProfit = 0;
     for (const item of bill.items) {
-      const costOfGoods = item.purchasePrice * item.quantity;
-      const itemProfit = item.taxableAmount - costOfGoods;
-      billProfit += itemProfit;
+      const costOfGoods = (item.purchasePrice || 0) * item.quantity;
+      const itemProfit = (item.taxableAmount || 0) - costOfGoods;
+      if (itemProfit >= 0) {
+        todayProfit += itemProfit;
+      } else {
+        todayLoss += Math.abs(itemProfit);
+      }
     }
-    billProfit += (bill.discount || 0);
-
-    if (billProfit > 0) {
-      todayProfit += billProfit;
-    } else if (billProfit < 0) {
-      todayLoss += Math.abs(billProfit);
-    }
+    todayProfit += (bill.discount || 0);
   }
 
   // 6. Pending Credit & Pending Customers
@@ -100,52 +105,31 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   // 9. Today's Bills Count
   const todayBillsCount = todayBills.length;
 
-  // 10. Monthly Sales & Profit & Purchase & Volume (strictly 1st to end of current month)
-  const monthlyBillsMatch = {
-    status: { $ne: 'Cancelled' },
-    $expr: {
-      $and: [
-        { $gte: [{ $ifNull: ['$billDate', '$createdAt'] }, startOfMonth] },
-        { $lte: [{ $ifNull: ['$billDate', '$createdAt'] }, endOfMonth] },
-      ],
-    },
-  };
-
-  const monthlyBills = await Bill.find(monthlyBillsMatch);
-  const monthlySales = monthlyBills.reduce((sum, bill) => sum + bill.finalAmount, 0);
+  // 10. Monthly Sales & Profit & Purchase & Volume (current month)
+  const monthlyBills = allBills.filter((b) => isSameMonth(b.billDate, now) || isSameMonth(b.createdAt, now));
+  const monthlySales = monthlyBills.reduce((sum, bill) => sum + (bill.finalAmount || 0), 0);
 
   let monthlyProfit = 0;
+  let monthlyLoss = 0;
   for (const bill of monthlyBills) {
-    let billProfit = 0;
     for (const item of bill.items) {
-      const costOfGoods = item.purchasePrice * item.quantity;
-      const itemProfit = item.taxableAmount - costOfGoods;
-      billProfit += itemProfit;
+      const costOfGoods = (item.purchasePrice || 0) * item.quantity;
+      const itemProfit = (item.taxableAmount || 0) - costOfGoods;
+      if (itemProfit >= 0) {
+        monthlyProfit += itemProfit;
+      } else {
+        monthlyLoss += Math.abs(itemProfit);
+      }
     }
-    billProfit += (bill.discount || 0);
-    if (billProfit > 0) {
-      monthlyProfit += billProfit;
-    }
+    monthlyProfit += (bill.discount || 0);
   }
 
-  const monthlyPurchasesMatch = {
-    $expr: {
-      $and: [
-        { $gte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, startOfMonth] },
-        { $lte: [{ $ifNull: ['$purchaseDate', '$createdAt'] }, endOfMonth] },
-      ],
-    },
-  };
+  const monthlyPurchasesList = allPurchases.filter((p) => isSameMonth(p.purchaseDate, now) || isSameMonth(p.createdAt, now));
+  const monthlyPurchase = monthlyPurchasesList.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
 
-  const monthlyPurchasesList = await Purchase.find(monthlyPurchasesMatch);
-  const monthlyPurchase = monthlyPurchasesList.reduce((sum, p) => sum + p.totalAmount, 0);
-
-  const monthlyVolumeAgg = await Bill.aggregate([
-    { $match: monthlyBillsMatch },
-    { $unwind: '$items' },
-    { $group: { _id: null, totalQty: { $sum: '$items.quantity' } } },
-  ]);
-  const monthlyVolume = monthlyVolumeAgg[0]?.totalQty || 0;
+  const monthlyVolume = monthlyBills.reduce((sum, b) => {
+    return sum + (b.items || []).reduce((itemSum, i) => itemSum + (i.quantity || 0), 0);
+  }, 0);
 
   // All-time Totals (Sales, Purchase, Profit, Loss)
   const totalSalesAgg = await Bill.aggregate([
@@ -159,22 +143,19 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   ]);
   const totalPurchase = totalPurchaseAgg[0]?.total || 0;
 
-  const allBills = await Bill.find({ status: { $ne: 'Cancelled' } });
   let totalProfit = 0;
   let totalLoss = 0;
   for (const bill of allBills) {
-    let billProfit = 0;
     for (const item of bill.items) {
       const costOfGoods = (item.purchasePrice || 0) * item.quantity;
       const itemProfit = (item.taxableAmount || 0) - costOfGoods;
-      billProfit += itemProfit;
+      if (itemProfit >= 0) {
+        totalProfit += itemProfit;
+      } else {
+        totalLoss += Math.abs(itemProfit);
+      }
     }
-    billProfit += (bill.discount || 0);
-    if (billProfit > 0) {
-      totalProfit += billProfit;
-    } else if (billProfit < 0) {
-      totalLoss += Math.abs(billProfit);
-    }
+    totalProfit += (bill.discount || 0);
   }
 
   // 11. Total Partner Investments (Investments - Withdrawals)
@@ -246,26 +227,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   const monthlyCommission = monthlyCommissionAgg[0]?.monthlyComm || 0;
 
   // 18. Travel Charge from Supplier Bills (Purchases)
-  const totalSupplierBillAgg = await Purchase.aggregate([
-    {
-      $group: {
-        _id: null,
-        totalTravel: { $sum: '$travelCharge' },
-      },
-    },
-  ]);
-  const totalTravelCharge = totalSupplierBillAgg[0]?.totalTravel || 0;
-
-  const monthlySupplierBillAgg = await Purchase.aggregate([
-    { $match: monthlyPurchasesMatch },
-    {
-      $group: {
-        _id: null,
-        monthlyTravel: { $sum: '$travelCharge' },
-      },
-    },
-  ]);
-  const monthlyTravelCharge = monthlySupplierBillAgg[0]?.monthlyTravel || 0;
+  const totalTravelCharge = allPurchases.reduce((sum, p) => sum + (p.travelCharge || 0), 0);
+  const monthlyTravelCharge = monthlyPurchasesList.reduce((sum, p) => sum + (p.travelCharge || 0), 0);
 
   res.status(200).json({
     success: true,
@@ -289,6 +252,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       todayBills: todayBillsCount,
       monthlySales: Math.round(monthlySales),
       monthlyProfit: Math.round(monthlyProfit),
+      monthlyLoss: Math.round(monthlyLoss),
       monthlyPurchase: Math.round(monthlyPurchase),
       monthlyVolume,
       totalCommission: Math.round(totalCommission),

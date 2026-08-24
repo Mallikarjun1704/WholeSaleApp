@@ -471,6 +471,7 @@ const Dashboard = () => {
     },
     { title: 'Total Sales', value: formatCurrency(stats.totalSales), icon: <SalesIcon />, color: '#0EA5E9' },
     { title: 'Total Profit', value: formatCurrency(stats.totalProfit), icon: <ProfitIcon />, color: '#10B981' },
+    { title: 'Total Loss', value: formatCurrency(stats.totalLoss), icon: <LossIcon />, color: '#EF4444' },
     { title: 'Total Purchase', value: formatCurrency(stats.totalPurchase), icon: <PurchaseIcon />, color: '#F59E0B' },
     {
       title: 'Low Stock Items',
@@ -483,11 +484,14 @@ const Dashboard = () => {
     { title: 'Total Commission', value: formatCurrency(stats.totalCommission), icon: <CommissionIcon />, color: '#10B981' },
     { title: 'Total Travel Charge', value: formatCurrency(stats.totalTravelCharge), icon: <TravelIcon />, color: '#F59E0B' },
     { title: 'Monthly Profit', value: formatCurrency(stats.monthlyProfit), icon: <MonthlyProfitIcon />, color: '#10B981' },
+    { title: 'Monthly Loss', value: formatCurrency(stats.monthlyLoss), icon: <LossIcon />, color: '#EF4444' },
     { title: 'Monthly Sales', value: formatCurrency(stats.monthlySales), icon: <MonthlyIcon />, color: '#0EA5E9' },
     { title: 'Monthly Purchase', value: formatCurrency(stats.monthlyPurchase), icon: <PurchaseIcon />, color: '#8B5CF6' },
     { title: 'Current Month Volume', value: stats.monthlyVolume || 0, icon: <CategoryIcon />, color: '#EC4899' },
     { title: 'Current Month Commission', value: formatCurrency(stats.monthlyCommission), icon: <CommissionIcon />, color: '#0EA5E9' },
     { title: 'Current Month Travel Charge', value: formatCurrency(stats.monthlyTravelCharge), icon: <TravelIcon />, color: '#6366F1' },
+    { title: "Today's Profit", value: formatCurrency(stats.todayProfit), icon: <ProfitIcon />, color: '#10B981' },
+    { title: "Today's Loss", value: formatCurrency(stats.todayLoss), icon: <LossIcon />, color: '#EF4444' },
   ];
 
   return (

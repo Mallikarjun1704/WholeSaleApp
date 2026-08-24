@@ -15,6 +15,7 @@ import { selectCurrentUser } from '../features/auth/authSlice';
 import { useGetSuppliersQuery, useCreateSupplierMutation, useUpdateSupplierMutation } from '../api/supplierApi';
 import { useGetPurchasesBySupplierQuery, useCreatePurchaseMutation, useUpdatePurchasePaymentMutation, useUpdatePurchaseMutation, useLazyGetNextInvoiceNumberQuery } from '../api/purchaseApi';
 import { useGetInventoryQuery, useCreateProductMutation } from '../api/inventoryApi';
+import { getLocalDateString } from '../utils/dateUtils';
 
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
@@ -130,10 +131,9 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
   const [errorMsg, setErrorMsg] = useState('');
   const [showAddProduct, setShowAddProduct] = useState(false);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
     invoiceNumber: '',
-    purchaseDate: todayStr,
+    purchaseDate: getLocalDateString(),
     travelCharge: 0,
     notes: '',
   });
@@ -200,7 +200,7 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
   };
 
   const resetForm = () => {
-    setForm({ invoiceNumber: '', purchaseDate: new Date().toISOString().slice(0, 10), travelCharge: 0, notes: '' });
+    setForm({ invoiceNumber: '', purchaseDate: getLocalDateString(), travelCharge: 0, notes: '' });
     setItems([{ productId: '', quantity: 1, purchasePrice: '', imeiNumbers: '' }]);
   };
 
@@ -333,7 +333,7 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
   const [travel, setTravel] = useState(purchase?.travelCharge || 0);
   const [notes, setNotes] = useState(purchase?.notes || '');
   const [purchaseDate, setPurchaseDate] = useState(
-    purchase?.purchaseDate ? new Date(purchase.purchaseDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
+    purchase?.purchaseDate ? getLocalDateString(purchase.purchaseDate) : getLocalDateString()
   );
   const [items, setItems] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
@@ -344,7 +344,7 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
       setTravel(purchase.travelCharge || 0);
       setNotes(purchase.notes || '');
       setPurchaseDate(
-        purchase.purchaseDate ? new Date(purchase.purchaseDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
+        purchase.purchaseDate ? getLocalDateString(purchase.purchaseDate) : getLocalDateString()
       );
       setItems(
         (purchase.items || []).map((item) => ({
