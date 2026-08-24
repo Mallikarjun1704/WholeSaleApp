@@ -3,22 +3,24 @@ import {
   Box, Typography, Card, Button, TextField, InputAdornment, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, Collapse, Skeleton, alpha, Divider, Stack, Grid, Select, MenuItem, FormControl, InputLabel,
-  Paper, Alert,
+  Paper, Alert, Tabs, Tab, Tooltip,
 } from '@mui/material';
 import {
   Search as SearchIcon, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
   KeyboardArrowDown, KeyboardArrowUp, People as CustomerIcon, Close as CloseIcon,
   PictureAsPdf as PdfIcon, Download as DownloadIcon, Visibility as ViewIcon,
   History as HistoryIcon, Payment as PaymentIcon, Receipt as ReceiptIcon,
+  Assessment as StatementIcon, DateRange as DateRangeIcon, Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import {
   useGetCustomersQuery,
   useCreateCustomerMutation,
   useUpdateCustomerMutation,
   useRecordCustomerPaymentMutation,
+  useGetCustomerStatementQuery,
 } from '../api/customerApi';
 import { useGetBillsByCustomerQuery, useUpdateBillPaymentMutation } from '../api/billingApi';
-import { downloadBillPdf, openBillPdf } from '../utils/pdfUtils';
+import { downloadBillPdf, openBillPdf, downloadCustomerStatementPdf } from '../utils/pdfUtils';
 
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
@@ -144,6 +146,9 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
 // ========== Record Partial / Full Payment Dialog for Single Bill ==========
 const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
   const [payAmount, setPayAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
 
   React.useEffect(() => {
     if (bill) {
@@ -151,6 +156,9 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
       const paid = bill.paidAmount || 0;
       const rem = Math.max(0, total - paid);
       setPayAmount(rem > 0 ? rem : total);
+      setPaymentMethod('Cash');
+      setPaymentDate(new Date().toISOString().slice(0, 10));
+      setNote('');
     }
   }, [open, bill]);
 
@@ -167,7 +175,7 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
       <DialogTitle sx={{ fontWeight: 700 }}>Payment Status: #{bill.billNumber}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <Box sx={{ p: 1.5, bgcolor: 'grey.100', borderRadius: 1.5 }}>
+          <Box sx={{ p: 1.5, bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'grey.100', borderRadius: 1.5 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Typography variant="body2" color="text.secondary">Current Status:</Typography>
               <Chip
@@ -189,15 +197,50 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
               This bill is currently marked as <strong>Paid</strong>. You can revert it to <strong>Unpaid (Pending)</strong> if needed.
             </Alert>
           ) : (
-            <TextField
-              label="Payment Amount ₹ *"
-              type="number"
-              value={payAmount}
-              onChange={(e) => setPayAmount(e.target.value)}
-              fullWidth
-              size="small"
-              inputProps={{ min: 1, max: remaining }}
-            />
+            <>
+              <TextField
+                label="Payment Amount ₹ *"
+                type="number"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                fullWidth
+                size="small"
+                inputProps={{ min: 1, max: remaining }}
+              />
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Payment Method</InputLabel>
+                    <Select value={paymentMethod} label="Payment Method" onChange={(e) => setPaymentMethod(e.target.value)}>
+                      <MenuItem value="Cash">Cash</MenuItem>
+                      <MenuItem value="UPI">UPI</MenuItem>
+                      <MenuItem value="Card">Card</MenuItem>
+                      <MenuItem value="Net Banking">Net Banking</MenuItem>
+                      <MenuItem value="Cheque">Cheque</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Payment Date"
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    fullWidth
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              </Grid>
+              <TextField
+                label="Note / Reference"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                fullWidth
+                size="small"
+                placeholder="Optional remark..."
+              />
+            </>
           )}
         </Stack>
       </DialogContent>
@@ -217,7 +260,7 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
           {!isPaid && (
             <Button
               variant="contained"
-              onClick={() => onSave({ amount: Number(payAmount) })}
+              onClick={() => onSave({ amount: Number(payAmount), paymentMethod, note, paymentDate })}
               disabled={isLoading || !payAmount || Number(payAmount) <= 0}
             >
               {isLoading ? 'Saving...' : 'Submit Payment'}
@@ -503,6 +546,231 @@ const CustomerPaymentHistoryDialog = ({ open, onClose, customer }) => {
   );
 };
 
+// ========== Customer Statement & Date Filter Dialog ==========
+const CustomerStatementDialog = ({ open, onClose, customer }) => {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
+
+  const [startDate, setStartDate] = useState(firstDay);
+  const [endDate, setEndDate] = useState(today);
+  const [tabIndex, setTabIndex] = useState(0);
+
+  const { data: statementData, isLoading, refetch } = useGetCustomerStatementQuery(
+    { id: customer?._id, startDate, endDate },
+    { skip: !open || !customer?._id }
+  );
+
+  const statement = statementData?.data || {};
+  const bills = statement.bills || [];
+  const payments = statement.payments || [];
+  const openingBalance = statement.openingBalance || 0;
+  const totalBilled = statement.totalBilled || 0;
+  const totalPaid = statement.totalPaid || 0;
+  const closingBalance = statement.closingBalance || 0;
+
+  const handleDownloadPdf = () => {
+    downloadCustomerStatementPdf(customer._id, startDate, endDate, customer);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <StatementIcon color="primary" />
+          <Typography variant="h6" fontWeight={800}>
+            Bill Statement: {customer?.shopName}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
+      </DialogTitle>
+
+      <DialogContent dividers sx={{ p: 2.5 }}>
+        {/* Date Filter Controls */}
+        <Paper variant="outlined" sx={{ p: 2, mb: 2.5, borderRadius: 2, bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F8FAFC' }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="From Date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="To Date"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4} sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={() => refetch()}
+                sx={{ flex: 1 }}
+              >
+                Filter
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<PdfIcon />}
+                onClick={handleDownloadPdf}
+                sx={{ flex: 1.2 }}
+              >
+                Download PDF
+              </Button>
+            </Grid>
+          </Grid>
+        </Paper>
+
+        {/* Statement KPI Cards */}
+        <Grid container spacing={2} sx={{ mb: 2.5 }}>
+          <Grid item xs={6} sm={3}>
+            <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center', bgcolor: (theme) => alpha(theme.palette.text.secondary, 0.05) }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>OPENING BALANCE</Typography>
+              <Typography variant="h6" fontWeight={800}>{formatCurrency(openingBalance)}</Typography>
+            </Card>
+          </Grid>
+          <Grid item xs={6} sm={3}>
+            <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center', bgcolor: (theme) => alpha(theme.palette.info.main, 0.08), borderColor: 'info.light' }}>
+              <Typography variant="caption" color="info.main" fontWeight={600}>TOTAL INVOICED</Typography>
+              <Typography variant="h6" fontWeight={800} color="info.main">{formatCurrency(totalBilled)}</Typography>
+            </Card>
+          </Grid>
+          <Grid item xs={6} sm={3}>
+            <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center', bgcolor: (theme) => alpha(theme.palette.success.main, 0.08), borderColor: 'success.light' }}>
+              <Typography variant="caption" color="success.main" fontWeight={600}>TOTAL PAYMENTS</Typography>
+              <Typography variant="h6" fontWeight={800} color="success.main">{formatCurrency(totalPaid)}</Typography>
+            </Card>
+          </Grid>
+          <Grid item xs={6} sm={3}>
+            <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center', bgcolor: (theme) => closingBalance > 0 ? alpha(theme.palette.error.main, 0.08) : alpha(theme.palette.success.main, 0.08), borderColor: closingBalance > 0 ? 'error.light' : 'success.light' }}>
+              <Typography variant="caption" color={closingBalance > 0 ? 'error.main' : 'success.main'} fontWeight={600}>NET OUTSTANDING</Typography>
+              <Typography variant="h6" fontWeight={800} color={closingBalance > 0 ? 'error.main' : 'success.main'}>{formatCurrency(closingBalance)}</Typography>
+            </Card>
+          </Grid>
+        </Grid>
+
+        {/* Tabs for Invoiced Bills & Payments Received */}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Tabs value={tabIndex} onChange={(e, val) => setTabIndex(val)}>
+            <Tab label={`Invoiced Bills (${bills.length})`} />
+            <Tab label={`Payments Received (${payments.length})`} />
+          </Tabs>
+        </Box>
+
+        {isLoading ? (
+          <Skeleton height={200} />
+        ) : tabIndex === 0 ? (
+          bills.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+              No bills found in this statement period.
+            </Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead sx={{ bgcolor: 'action.hover' }}>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Bill #</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>Items</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Bill Total</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Paid</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Balance</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>Status</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>PDF</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {bills.map((b) => (
+                    <TableRow key={b._id} hover>
+                      <TableCell sx={{ fontWeight: 600 }}>{b.billNumber}</TableCell>
+                      <TableCell>{new Date(b.billDate || b.createdAt).toLocaleDateString('en-IN')}</TableCell>
+                      <TableCell align="center">{b.items?.length || 0}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(b.finalAmount)}</TableCell>
+                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(b.paidAmount || 0)}</TableCell>
+                      <TableCell align="right" sx={{ color: Math.max(0, b.finalAmount - (b.paidAmount || 0)) > 0 ? 'error.main' : 'text.secondary', fontWeight: 600 }}>
+                        {formatCurrency(Math.max(0, b.finalAmount - (b.paidAmount || 0)))}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          label={b.status}
+                          size="small"
+                          color={b.status === 'Paid' ? 'success' : b.status === 'Partially Paid' ? 'warning' : 'error'}
+                          sx={{ fontWeight: 700 }}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <IconButton size="small" color="primary" onClick={() => downloadBillPdf(b._id, b)}>
+                          <PdfIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )
+        ) : (
+          payments.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+              No payments recorded in this statement period.
+            </Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead sx={{ bgcolor: 'action.hover' }}>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Payment Date</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Bill #</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Method</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Amount Paid</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Notes / Remarks</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {payments.map((p, idx) => (
+                    <TableRow key={p._id || idx} hover>
+                      <TableCell>{new Date(p.paymentDate).toLocaleDateString('en-IN')}</TableCell>
+                      <TableCell><strong>{p.billNumber}</strong></TableCell>
+                      <TableCell><Chip label={p.paymentMethod || 'Cash'} size="small" variant="outlined" /></TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 800, color: 'success.main' }}>
+                        {formatCurrency(p.amount)}
+                      </TableCell>
+                      <TableCell color="text.secondary">{p.note || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )
+        )}
+      </DialogContent>
+
+      <DialogActions sx={{ p: 2, display: 'flex', justifyContent: 'space-between' }}>
+        <Button
+          variant="contained"
+          startIcon={<PdfIcon />}
+          onClick={handleDownloadPdf}
+        >
+          Download PDF Statement
+        </Button>
+        <Button onClick={onClose} variant="outlined">Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 // ========== Customer Row with Bills ==========
 const CustomerRow = ({ customer, onEdit }) => {
   const [open, setOpen] = useState(false);
@@ -510,8 +778,9 @@ const CustomerRow = ({ customer, onEdit }) => {
   const [paymentBill, setPaymentBill] = useState(null);
   const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [statementOpen, setStatementOpen] = useState(false);
 
-  const { data: billsData } = useGetBillsByCustomerQuery(customer._id, { skip: !open && !bulkPaymentOpen && !historyOpen });
+  const { data: billsData } = useGetBillsByCustomerQuery(customer._id, { skip: !open && !bulkPaymentOpen && !historyOpen && !statementOpen });
   const [updateBillPayment, { isLoading: isUpdatingPayment }] = useUpdateBillPaymentMutation();
   const bills = billsData?.data || [];
 
@@ -561,12 +830,21 @@ const CustomerRow = ({ customer, onEdit }) => {
         </TableCell>
         <TableCell>
           <Stack direction="row" spacing={0.5}>
-            <IconButton size="small" title="Payment History Log" onClick={() => setHistoryOpen(true)}>
-              <HistoryIcon fontSize="small" color="action" />
-            </IconButton>
-            <IconButton size="small" title="Edit Store" onClick={() => onEdit(customer)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
+            <Tooltip title="Bill Statement & PDF Report">
+              <IconButton size="small" color="primary" onClick={() => setStatementOpen(true)}>
+                <StatementIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Payment History Log">
+              <IconButton size="small" onClick={() => setHistoryOpen(true)}>
+                <HistoryIcon fontSize="small" color="action" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Edit Store">
+              <IconButton size="small" onClick={() => onEdit(customer)}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Stack>
         </TableCell>
       </TableRow>
@@ -679,6 +957,14 @@ const CustomerRow = ({ customer, onEdit }) => {
         <CustomerPaymentHistoryDialog
           open={historyOpen}
           onClose={() => setHistoryOpen(false)}
+          customer={customer}
+        />
+      )}
+
+      {statementOpen && (
+        <CustomerStatementDialog
+          open={statementOpen}
+          onClose={() => setStatementOpen(false)}
           customer={customer}
         />
       )}

@@ -138,11 +138,11 @@ const createPurchase = asyncHandler(async (req, res) => {
     });
   }
 
-  // Calculate commission and total
-  const commPercent = Math.min(100, Math.max(0, Number(commissionPercent) || 0));
+  // Calculate travel charge and total (commission removed from supplier bills)
+  const commPercent = 0;
   const travel = Math.max(0, Number(travelCharge) || 0);
-  const commAmount = Math.round(((subtotal + travel) * commPercent) / 100);
-  const totalAmount = subtotal + commAmount + travel;
+  const commAmount = 0;
+  const totalAmount = subtotal + travel;
 
   // Calculate initial paid amount & status
   const initialPaid = Math.min(totalAmount, Math.max(0, Number(paidAmount) || 0));
@@ -163,8 +163,8 @@ const createPurchase = asyncHandler(async (req, res) => {
     supplier: supplier._id,
     items: processedItems,
     subtotal,
-    commissionPercent: commPercent,
-    commissionAmount: commAmount,
+    commissionPercent: 0,
+    commissionAmount: 0,
     travelCharge: travel,
     totalAmount,
     paidAmount: initialPaid,
@@ -174,20 +174,16 @@ const createPurchase = asyncHandler(async (req, res) => {
     notes: notes || '',
   });
 
-  // Calculate overhead ratio (commission + travel charge) per subtotal
-  const overheadRatio = subtotal > 0 ? (commAmount + travel) / subtotal : 0;
-
   // Create Batch records and update Product stock for each item
   for (let idx = 0; idx < processedItems.length; idx++) {
     const item = processedItems[idx];
-    const effectivePrice = Math.round(item.purchasePrice * (1 + overheadRatio));
     // Create batch record per item
     await Batch.create({
       batchId: processedItems.length > 1 ? `${batchId}-${idx + 1}` : batchId,
       product: item.product,
       purchase: purchase._id,
       supplier: supplier._id,
-      purchasePrice: effectivePrice,
+      purchasePrice: item.purchasePrice,
       quantity: item.quantity,
       remainingQty: item.quantity,
       imeiNumbers: item.imeiNumbers,
@@ -441,33 +437,28 @@ const updatePurchase = asyncHandler(async (req, res) => {
     purchase.subtotal = newSubtotal;
   }
 
-  // Recalculate overheads, commission & total amount
-  const commPercent = commissionPercent !== undefined ? Number(commissionPercent) : purchase.commissionPercent;
+  // Recalculate overheads & total amount (commission removed from supplier bills)
   const travel = travelCharge !== undefined ? Number(travelCharge) : purchase.travelCharge;
-  const commAmount = Math.round(((purchase.subtotal + travel) * commPercent) / 100);
+  const newTotal = purchase.subtotal + travel;
 
-  const newTotal = purchase.subtotal + commAmount + travel;
-
-  purchase.commissionPercent = commPercent;
+  purchase.commissionPercent = 0;
   purchase.travelCharge = travel;
-  purchase.commissionAmount = commAmount;
+  purchase.commissionAmount = 0;
   purchase.totalAmount = newTotal;
   if (notes !== undefined) purchase.notes = notes;
   if (purchaseDate) purchase.purchaseDate = new Date(purchaseDate);
 
   // If items were updated, re-create batches and update product stock & imeiList
   if (hasItemsUpdate) {
-    const overheadRatio = purchase.subtotal > 0 ? (commAmount + travel) / purchase.subtotal : 0;
     for (let idx = 0; idx < processedItems.length; idx++) {
       const item = processedItems[idx];
-      const effectivePrice = Math.round(item.purchasePrice * (1 + overheadRatio));
 
       await Batch.create({
         batchId: processedItems.length > 1 ? `${purchase.batchId}-${idx + 1}` : purchase.batchId,
         product: item.product,
         purchase: purchase._id,
         supplier: purchase.supplier,
-        purchasePrice: effectivePrice,
+        purchasePrice: item.purchasePrice,
         quantity: item.quantity,
         remainingQty: item.quantity,
         imeiNumbers: item.imeiNumbers,

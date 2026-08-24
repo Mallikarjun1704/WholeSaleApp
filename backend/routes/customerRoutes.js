@@ -8,12 +8,16 @@ const {
   updateCustomer,
   deleteCustomer,
   recordCustomerPayment,
+  getCustomerStatement,
+  getCustomerStatementPdf,
 } = require('../controllers/customerController');
 
 // All customer routes require authentication
 router.use(authenticate);
 
 router.get('/', getCustomers);
+router.get('/:id/statement', getCustomerStatement);
+router.get('/:id/statement/pdf', getCustomerStatementPdf);
 router.get('/:id', getCustomerById);
 
 // Admin-only write operations

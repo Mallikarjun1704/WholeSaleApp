@@ -57,7 +57,7 @@ const paymentLogSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['Cash', 'Card', 'UPI', 'Credit', 'Net Banking', 'Cheque', 'Mixed'],
+    enum: ['Cash', 'Card', 'UPI', 'Credit', 'Net Banking', 'Cheque', 'Mixed', 'Other', 'Bank Transfer'],
     default: 'Cash',
   },
   note: {
@@ -115,7 +115,7 @@ const billSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ['Cash', 'Card', 'UPI', 'Credit', 'Mixed'],
+      enum: ['Cash', 'Card', 'UPI', 'Credit', 'Net Banking', 'Cheque', 'Mixed', 'Other', 'Bank Transfer'],
       default: 'Cash',
     },
     status: {

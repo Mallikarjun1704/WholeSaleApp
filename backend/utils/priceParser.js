@@ -4,31 +4,37 @@
  */
 
 const KNOWN_BRANDS = [
-  { key: 'redmi', name: 'Redmi' },
-  { key: 'mi', name: 'Redmi' },
-  { key: 'xiaomi', name: 'Redmi' },
-  { key: 'poco', name: 'Poco' },
-  { key: 'samsung', name: 'Samsung' },
-  { key: 'realme', name: 'Realme' },
-  { key: 'apple', name: 'Apple' },
-  { key: 'iphone', name: 'Apple' },
-  { key: 'vivo', name: 'Vivo' },
-  { key: 'oppo', name: 'Oppo' },
-  { key: 'oneplus', name: 'OnePlus' },
-  { key: 'iqoo', name: 'iQOO' },
-  { key: 'motorola', name: 'Motorola' },
-  { key: 'moto', name: 'Motorola' },
-  { key: 'infinix', name: 'Infinix' },
-  { key: 'techno', name: 'Tecno' },
-  { key: 'tecno', name: 'Tecno' },
-  { key: 'nokia', name: 'Nokia' },
-  { key: 'nothing', name: 'Nothing' },
-  { key: 'google', name: 'Google' },
-  { key: 'pixel', name: 'Google' },
+  { key: 'redmi', name: 'REDMI' },
+  { key: 'mi', name: 'REDMI' },
+  { key: 'xiaomi', name: 'REDMI' },
+  { key: 'poco', name: 'POCO' },
+  { key: 'samsung', name: 'SAMSUNG' },
+  { key: 'realme', name: 'REALME' },
+  { key: 'apple', name: 'APPLE' },
+  { key: 'iphone', name: 'APPLE' },
+  { key: 'vivo', name: 'VIVO' },
+  { key: 'oppo', name: 'OPPO' },
+  { key: 'oneplus', name: 'ONEPLUS' },
+  { key: 'iqoo', name: 'IQOO' },
+  { key: 'motorola', name: 'MOTOROLA' },
+  { key: 'moto', name: 'MOTOROLA' },
+  { key: 'infinix', name: 'INFINIX' },
+  { key: 'techno', name: 'TECNO' },
+  { key: 'tecno', name: 'TECNO' },
+  { key: 'nokia', name: 'NOKIA' },
+  { key: 'nothing', name: 'NOTHING' },
+  { key: 'google', name: 'GOOGLE' },
+  { key: 'pixel', name: 'GOOGLE' },
+  { key: 'honor', name: 'HONOR' },
 ];
 
 function detectBrandFromLine(line) {
-  const clean = line.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim();
+  // Strip emojis & special symbols first
+  const clean = line
+    .replace(/\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}/gu, ' ')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .toLowerCase()
+    .trim();
   const firstWord = clean.split(/\s+/)[0];
 
   for (const b of KNOWN_BRANDS) {
@@ -52,15 +58,24 @@ function parseRawMessage(rawText, normalizationRules = []) {
   const normMap = new Map();
   normalizationRules.forEach((rule) => {
     if (rule.rawPattern && rule.normalizedName) {
-      normMap.set(rule.rawPattern.toLowerCase().trim(), rule.normalizedName.trim());
+      normMap.set(rule.rawPattern.toLowerCase().trim(), rule.normalizedName.trim().toUpperCase());
     }
   });
 
   let currentBrand = '';
 
   for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i].trim();
+    let rawLine = lines[i].trim();
     if (!rawLine) continue; // Ignore blank lines
+
+    // Strip emojis and special unwanted decorative symbols immediately
+    rawLine = rawLine
+      .replace(/\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}/gu, ' ')
+      .replace(/[▪▫◾◽✓✔★☆🔥📱💥✅➡️▶️📌⚡📍👉🏷️💰📦✨🏷🛒💯•●◆◇]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!rawLine) continue;
 
     // 1. Check if line is a Brand Header
     const detectedBrand = detectBrandFromLine(rawLine);
@@ -149,7 +164,7 @@ function parseRawMessage(rawText, normalizationRules = []) {
     line = line
       .replace(/^[\*\-\•\–\—\:\,\.\s]+/, '')
       .replace(/[\*\-\•\–\—\:\,\.\s]+$/, '')
-      .replace(/fresh|sealed|indian|demo|stock|all fresh/gi, ' ')
+      .replace(/\b(fresh|sealed|indian|demo|stock|all fresh|pcs|box|rate|price|qty|available)\b/gi, ' ')
       .replace(/\s*\.\s*/g, ' ')
       .replace(/[\s\-\–\—\:]+/g, ' ')
       .trim();
@@ -161,10 +176,10 @@ function parseRawMessage(rawText, normalizationRules = []) {
     // Remove 4G/5G from line copy so we can cleanly standardize it
     line = line.replace(/\b5g\b/gi, '').replace(/\b4g\b/gi, '').replace(/\s+/g, ' ').trim();
 
-    // Remove Brand Prefixes like "Mi", "Xiaomi", "Redmi", "Poco" if redundant
-    line = line.replace(/^(mi|xiaomi|redmi|poco|samsung|realme|apple|vivo|oppo)\b/gi, '').trim();
+    // Remove Brand Prefixes like "Mi", "Xiaomi", "Redmi", "Poco" if redundant from model line
+    line = line.replace(/^(mi|xiaomi|redmi|poco|samsung|realme|apple|vivo|oppo|oneplus|infinix|tecno|motorola|moto)\b/gi, '').trim();
 
-    // Standardize model spacing: Note15 -> Note 15, Note14Pro -> Note 14 Pro, C85x -> C85X
+    // Standardize model spacing: Note15 -> Note 15, Note14Pro -> Note 14 Pro
     line = line
       .replace(/\bNote(\d+)/gi, 'Note $1')
       .replace(/\bNote\s*(\d+)\s*Pro\b/gi, 'Note $1 Pro')
@@ -179,43 +194,43 @@ function parseRawMessage(rawText, normalizationRules = []) {
       has5G = true;
     }
 
-    // Capitalize words in model name
-    line = line.split(/\s+/).map(w => w.toUpperCase() === w ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-
     // Append 5G or 4G to Model Name if present
-    if (has5G && !line.includes('5G')) {
+    if (has5G && !line.toUpperCase().includes('5G')) {
       line = `${line} 5G`;
-    } else if (has4G && !line.includes('4G')) {
+    } else if (has4G && !line.toUpperCase().includes('4G')) {
       line = `${line} 4G`;
     }
 
-    let rawModelStr = line.trim();
+    // Convert Model Name to UPPERCASE to prevent case-sensitive duplicates (e.g., 'abc' vs 'ABC', '15c' vs '15C')
+    let rawModelStr = line.replace(/\s+/g, ' ').toUpperCase().trim();
 
-    // Determine final Brand
-    let brand = currentBrand || 'Other';
-    if (!brand || brand === 'Other') {
+    // Determine Brand if available
+    let brand = currentBrand || '';
+    if (!brand) {
       const bFromLine = detectBrandFromLine(rawLine);
       if (bFromLine) brand = bFromLine;
     }
 
-    // Construct Canonical Phone Name & Model
-    let phoneName = `${brand} ${rawModelStr}`.replace(/\s+/g, ' ').trim();
+    // Allow matching even if company/brand name is missing:
+    // If brand is available, phoneName is BRAND MODEL (e.g. "REDMI 15C 5G")
+    // If brand is NOT available, phoneName is simply MODEL (e.g. "15C 5G" or "ABC")
+    let phoneName = brand ? `${brand} ${rawModelStr}`.replace(/\s+/g, ' ').trim() : rawModelStr;
     let model = rawModelStr;
 
     // Check custom database normalization rules
     const lowerFull = phoneName.toLowerCase();
     for (const [pattern, normName] of normMap.entries()) {
       if (lowerFull.includes(pattern)) {
-        phoneName = normName;
+        phoneName = normName.toUpperCase();
         break;
       }
     }
 
     validRecords.push({
-      phoneName,
-      model,
-      variant,
-      color: '', // default empty if not specified
+      phoneName: phoneName.toUpperCase(),
+      model: model.toUpperCase(),
+      variant: variant.toUpperCase(),
+      color: '',
       price,
       rawText: rawLine,
     });

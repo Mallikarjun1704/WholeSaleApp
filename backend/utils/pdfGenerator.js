@@ -410,6 +410,296 @@ const generateBillPdfStream = (bill, settings = {}) => {
   return printer.createPdfKitDocument(docDefinition);
 };
 
+/**
+ * Generate PDF stream for a customer bill statement & payment history report
+ * @param {Object} statement - Customer statement data with bills and payment logs
+ * @param {Object} settings - Store settings
+ * @returns {PDFKit.PDFDocument} pdfDoc stream
+ */
+const generateCustomerStatementPdfStream = (statement, settings = {}) => {
+  const customer = statement.customer || {};
+  const period = statement.period || {};
+  const bills = statement.bills || [];
+  const payments = statement.payments || [];
+
+  const shopPhone = settings.phone || 'N/A';
+  const shopEmail = settings.email || '';
+  const shopGst = settings.gstNumber || 'N/A';
+
+  // Build Invoiced Bills Table
+  const billsTableBody = [
+    [
+      { text: '#', style: 'tableHeader', alignment: 'center' },
+      { text: 'Bill #', style: 'tableHeader' },
+      { text: 'Date', style: 'tableHeader' },
+      { text: 'Total Qty', style: 'tableHeader', alignment: 'center' },
+      { text: 'Bill Amount', style: 'tableHeader', alignment: 'right' },
+      { text: 'Paid', style: 'tableHeader', alignment: 'right' },
+      { text: 'Balance', style: 'tableHeader', alignment: 'right' },
+      { text: 'Status', style: 'tableHeader', alignment: 'center' },
+    ],
+  ];
+
+  if (bills.length === 0) {
+    billsTableBody.push([
+      { text: 'No bills generated during this period.', colSpan: 8, alignment: 'center', color: '#64748B', fontSize: 9, margin: [0, 4, 0, 4] },
+      {}, {}, {}, {}, {}, {}, {},
+    ]);
+  } else {
+    bills.forEach((b, idx) => {
+      const isEven = idx % 2 === 0;
+      const rowBg = isEven ? '#FFFFFF' : '#F8FAFC';
+      const totalQty = (b.items || []).reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+      const paid = Number(b.paidAmount) || 0;
+      const finalAmt = Number(b.finalAmount) || 0;
+      const bal = Math.max(0, finalAmt - paid);
+
+      billsTableBody.push([
+        { text: String(idx + 1), alignment: 'center', fillColor: rowBg, fontSize: 8.5 },
+        { text: b.billNumber, bold: true, fillColor: rowBg, fontSize: 8.5, color: '#4F46E5' },
+        { text: formatDate(b.billDate || b.createdAt), fillColor: rowBg, fontSize: 8.5 },
+        { text: `${totalQty} pcs`, alignment: 'center', fillColor: rowBg, fontSize: 8.5 },
+        { text: formatINR(finalAmt), alignment: 'right', bold: true, fillColor: rowBg, fontSize: 8.5 },
+        { text: formatINR(paid), alignment: 'right', color: '#059669', fillColor: rowBg, fontSize: 8.5 },
+        { text: formatINR(bal), alignment: 'right', bold: bal > 0, color: bal > 0 ? '#DC2626' : '#64748B', fillColor: rowBg, fontSize: 8.5 },
+        { text: b.status || 'Pending', alignment: 'center', bold: true, color: b.status === 'Paid' ? '#059669' : '#D97706', fillColor: rowBg, fontSize: 8 },
+      ]);
+    });
+  }
+
+  // Build Payments Table
+  const paymentsTableBody = [
+    [
+      { text: '#', style: 'tableHeader', alignment: 'center' },
+      { text: 'Payment Date', style: 'tableHeader' },
+      { text: 'Bill #', style: 'tableHeader' },
+      { text: 'Method', style: 'tableHeader' },
+      { text: 'Amount Paid', style: 'tableHeader', alignment: 'right' },
+      { text: 'Notes / Remarks', style: 'tableHeader' },
+    ],
+  ];
+
+  if (payments.length === 0) {
+    paymentsTableBody.push([
+      { text: 'No payments recorded during this period.', colSpan: 6, alignment: 'center', color: '#64748B', fontSize: 9, margin: [0, 4, 0, 4] },
+      {}, {}, {}, {}, {},
+    ]);
+  } else {
+    payments.forEach((p, idx) => {
+      const isEven = idx % 2 === 0;
+      const rowBg = isEven ? '#FFFFFF' : '#F8FAFC';
+      paymentsTableBody.push([
+        { text: String(idx + 1), alignment: 'center', fillColor: rowBg, fontSize: 8.5 },
+        { text: formatDate(p.paymentDate), fillColor: rowBg, fontSize: 8.5 },
+        { text: p.billNumber || '-', bold: true, fillColor: rowBg, fontSize: 8.5, color: '#4F46E5' },
+        { text: p.paymentMethod || 'Cash', fillColor: rowBg, fontSize: 8.5 },
+        { text: formatINR(p.amount), alignment: 'right', bold: true, color: '#059669', fillColor: rowBg, fontSize: 8.5 },
+        { text: p.note || '-', color: '#64748B', fillColor: rowBg, fontSize: 8 },
+      ]);
+    });
+  }
+
+  const docDefinition = {
+    pageSize: 'A4',
+    pageMargins: [36, 36, 36, 40],
+    content: [
+      // Top Header
+      {
+        columns: [
+          {
+            width: '*',
+            stack: [
+              {
+                columns: [
+                  {
+                    width: 44,
+                    table: {
+                      widths: [44],
+                      heights: [38],
+                      body: [
+                        [
+                          {
+                            text: 'TM',
+                            fillColor: '#4F46E5',
+                            color: '#FFFFFF',
+                            fontSize: 20,
+                            bold: true,
+                            alignment: 'center',
+                            margin: [0, 6, 0, 0],
+                          },
+                        ],
+                      ],
+                    },
+                    layout: 'noBorders',
+                  },
+                  {
+                    width: '*',
+                    margin: [10, 0, 0, 0],
+                    stack: [
+                      { text: 'TM MOBILES', fontSize: 18, bold: true, color: '#4F46E5', letterSpacing: 1 },
+                      { text: 'ACCOUNT & BILL STATEMENT', fontSize: 10, bold: true, color: '#0EA5E9', margin: [0, 2, 0, 0] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            width: 220,
+            alignment: 'right',
+            stack: [
+              { text: `Phone: ${shopPhone}`, fontSize: 8.5, color: '#475569' },
+              shopEmail ? { text: `Email: ${shopEmail}`, fontSize: 8.5, color: '#475569' } : null,
+              { text: `GSTIN: ${shopGst}`, fontSize: 8.5, color: '#475569' },
+              { text: `Date Generated: ${formatDate(new Date())}`, fontSize: 8.5, bold: true, color: '#1E293B', margin: [0, 3, 0, 0] },
+            ].filter(Boolean),
+          },
+        ],
+        margin: [0, 0, 0, 16],
+      },
+
+      // Customer Info & Period Banner
+      {
+        table: {
+          widths: ['*', 200],
+          body: [
+            [
+              {
+                fillColor: '#F1F5F9',
+                margin: [8, 8, 8, 8],
+                stack: [
+                  { text: 'CUSTOMER / RETAIL STORE:', fontSize: 8, color: '#64748B', bold: true },
+                  { text: customer.shopName || 'Customer', fontSize: 13, bold: true, color: '#1E293B', margin: [0, 2, 0, 2] },
+                  { text: `Owner: ${customer.ownerName || '-'}   |   Phone: ${customer.phone || '-'}`, fontSize: 8.5, color: '#334155' },
+                  customer.address ? { text: `Address: ${customer.address}`, fontSize: 8.5, color: '#334155' } : null,
+                  customer.gstNumber ? { text: `GSTIN: ${customer.gstNumber}`, fontSize: 8.5, color: '#334155' } : null,
+                ].filter(Boolean),
+              },
+              {
+                fillColor: '#EEF2FF',
+                margin: [8, 8, 8, 8],
+                stack: [
+                  { text: 'STATEMENT PERIOD:', fontSize: 8, color: '#4F46E5', bold: true },
+                  {
+                    text: `${formatDate(period.startDate)} to ${formatDate(period.endDate)}`,
+                    fontSize: 10,
+                    bold: true,
+                    color: '#312E81',
+                    margin: [0, 3, 0, 5],
+                  },
+                  { text: `Opening Balance: ${formatINR(statement.openingBalance)}`, fontSize: 8.5, color: '#475569' },
+                  { text: `Total Invoiced: ${formatINR(statement.totalBilled)}`, fontSize: 8.5, bold: true, color: '#1E293B' },
+                  { text: `Total Payments: ${formatINR(statement.totalPaid)}`, fontSize: 8.5, bold: true, color: '#059669' },
+                  { text: `Net Balance: ${formatINR(statement.closingBalance)}`, fontSize: 9.5, bold: true, color: statement.closingBalance > 0 ? '#DC2626' : '#059669', margin: [0, 2, 0, 0] },
+                ],
+              },
+            ],
+          ],
+        },
+        layout: 'noBorders',
+        margin: [0, 0, 0, 16],
+      },
+
+      // Section 1: Invoiced Bills
+      { text: `1. Invoiced Bills in Period (${bills.length})`, fontSize: 11, bold: true, color: '#1E293B', margin: [0, 4, 0, 6] },
+      {
+        table: {
+          headerRows: 1,
+          widths: [20, 75, 65, 55, 75, 65, 65, 55],
+          body: billsTableBody,
+        },
+        layout: {
+          hLineWidth: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? 1 : 0.5),
+          vLineWidth: () => 0,
+          hLineColor: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? '#94A3B8' : '#E2E8F0'),
+        },
+        margin: [0, 0, 0, 16],
+      },
+
+      // Section 2: Payments History Log
+      { text: `2. Payments Received in Period (${payments.length})`, fontSize: 11, bold: true, color: '#1E293B', margin: [0, 4, 0, 6] },
+      {
+        table: {
+          headerRows: 1,
+          widths: [20, 85, 75, 75, 85, '*'],
+          body: paymentsTableBody,
+        },
+        layout: {
+          hLineWidth: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? 1 : 0.5),
+          vLineWidth: () => 0,
+          hLineColor: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? '#94A3B8' : '#E2E8F0'),
+        },
+        margin: [0, 0, 0, 20],
+      },
+
+      // Bottom Financial Summary Box & Signatory
+      {
+        columns: [
+          {
+            width: '*',
+            table: {
+              widths: ['*'],
+              body: [
+                [
+                  {
+                    fillColor: '#F8FAFC',
+                    margin: [10, 10, 10, 10],
+                    stack: [
+                      { text: 'STATEMENT SUMMARY', fontSize: 9, bold: true, color: '#1E293B', margin: [0, 0, 0, 4] },
+                      { text: `Prior Opening Balance: ${formatINR(statement.openingBalance)}`, fontSize: 8.5, color: '#475569' },
+                      { text: `+ New Bills Invoiced: ${formatINR(statement.totalBilled)}`, fontSize: 8.5, color: '#475569' },
+                      { text: `- Total Payments Received: ${formatINR(statement.totalPaid)}`, fontSize: 8.5, color: '#059669', bold: true },
+                      {
+                        text: `= Net Outstanding Balance: ${formatINR(statement.closingBalance)}`,
+                        fontSize: 10.5,
+                        bold: true,
+                        color: statement.closingBalance > 0 ? '#DC2626' : '#059669',
+                        margin: [0, 4, 0, 0],
+                      },
+                    ],
+                  },
+                ],
+              ],
+            },
+            layout: 'noBorders',
+          },
+          {
+            width: 180,
+            alignment: 'center',
+            stack: [
+              { text: 'For TM Mobiles', fontSize: 9, bold: true, color: '#1E293B', margin: [0, 20, 0, 30] },
+              { text: '(Authorized Signatory)', fontSize: 8, color: '#64748B' },
+            ],
+          },
+        ],
+      },
+    ],
+
+    styles: {
+      tableHeader: {
+        fontSize: 8.5,
+        bold: true,
+        color: '#FFFFFF',
+        fillColor: '#1E293B',
+        margin: [0, 3, 0, 3],
+      },
+    },
+
+    footer: function (currentPage, pageCount) {
+      return {
+        text: `TM Mobiles Statement Report - Page ${currentPage} of ${pageCount}`,
+        alignment: 'center',
+        fontSize: 8,
+        color: '#94A3B8',
+        margin: [0, 10, 0, 0],
+      };
+    },
+  };
+
+  return printer.createPdfKitDocument(docDefinition);
+};
+
 module.exports = {
   generateBillPdfStream,
+  generateCustomerStatementPdfStream,
 };

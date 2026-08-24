@@ -134,7 +134,6 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
   const [form, setForm] = useState({
     invoiceNumber: '',
     purchaseDate: todayStr,
-    commissionPercent: 0,
     travelCharge: 0,
     notes: '',
   });
@@ -173,8 +172,7 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
   }, 0);
 
   const travelChargeVal = Number(form.travelCharge) || 0;
-  const commAmount = Math.round(((subtotal + travelChargeVal) * (Number(form.commissionPercent) || 0)) / 100);
-  const totalAmount = subtotal + commAmount + travelChargeVal;
+  const totalAmount = subtotal + travelChargeVal;
 
   const handleSubmit = async () => {
     setErrorMsg('');
@@ -183,7 +181,6 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
       invoiceNumber: form.invoiceNumber,
       purchaseDate: form.purchaseDate,
       paidAmount: 0,
-      commissionPercent: Number(form.commissionPercent) || 0,
       travelCharge: Number(form.travelCharge) || 0,
       notes: form.notes,
       items: items.filter(i => i.productId && i.quantity && i.purchasePrice).map(i => ({
@@ -203,7 +200,7 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
   };
 
   const resetForm = () => {
-    setForm({ invoiceNumber: '', purchaseDate: new Date().toISOString().slice(0, 10), commissionPercent: 0, travelCharge: 0, notes: '' });
+    setForm({ invoiceNumber: '', purchaseDate: new Date().toISOString().slice(0, 10), travelCharge: 0, notes: '' });
     setItems([{ productId: '', quantity: 1, purchasePrice: '', imeiNumbers: '' }]);
   };
 
@@ -258,10 +255,7 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={6} sm={2}>
-                <TextField label="Commission %" type="number" value={form.commissionPercent} onChange={(e) => setForm({ ...form, commissionPercent: e.target.value })} fullWidth size="small" />
-              </Grid>
-              <Grid item xs={6} sm={2}>
+              <Grid item xs={12} sm={4}>
                 <TextField label="Travel Charge ₹" type="number" value={form.travelCharge} onChange={(e) => setForm({ ...form, travelCharge: e.target.value })} fullWidth size="small" />
               </Grid>
             </Grid>
@@ -285,7 +279,7 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
               <Grid item xs={3.5}>
                 <Autocomplete
                   options={sortedProducts}
-                  getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name} (${option.sku})`}
+                  getOptionLabel={(option) => (typeof option === 'string' ? option : (option?.name || ''))}
                   value={sortedProducts.find(p => p._id === item.productId) || null}
                   onChange={(event, newValue) => {
                     updateItem(i, 'productId', newValue ? newValue._id : '');
@@ -309,8 +303,6 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
             <Typography variant="body2" color="text.secondary">Total Quantity: <strong>{items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)} Units</strong></Typography>
             <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(subtotal)}</strong></Typography>
             <Typography variant="body2" color="text.secondary">Travel: <strong>{formatCurrency(travelChargeVal)}</strong></Typography>
-            <Typography variant="body2" color="text.secondary">Total Bill: <strong>{formatCurrency(subtotal + travelChargeVal)}</strong></Typography>
-            <Typography variant="body2" color="text.secondary">Commission: <strong>{formatCurrency(commAmount)}</strong></Typography>
             <Typography variant="subtitle1" fontWeight={800} color="primary.main">Total: {formatCurrency(totalAmount)}</Typography>
           </Box>
 
@@ -338,7 +330,6 @@ const PurchaseBillDialog = ({ open, onClose, supplierId, products, refetchProduc
 
 // ========== Admin Edit Purchase Dialog ==========
 const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchProducts, onSave, isLoading }) => {
-  const [commPercent, setCommPercent] = useState(purchase?.commissionPercent || 0);
   const [travel, setTravel] = useState(purchase?.travelCharge || 0);
   const [notes, setNotes] = useState(purchase?.notes || '');
   const [purchaseDate, setPurchaseDate] = useState(
@@ -350,7 +341,6 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
 
   React.useEffect(() => {
     if (purchase) {
-      setCommPercent(purchase.commissionPercent || 0);
       setTravel(purchase.travelCharge || 0);
       setNotes(purchase.notes || '');
       setPurchaseDate(
@@ -388,8 +378,7 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
   }, 0);
 
   const travelChargeVal = Number(travel) || 0;
-  const commAmount = Math.round(((subtotal + travelChargeVal) * (Number(commPercent) || 0)) / 100);
-  const totalAmount = subtotal + commAmount + travelChargeVal;
+  const totalAmount = subtotal + travelChargeVal;
 
   const handleProductCreated = (newProd) => {
     if (refetchProducts) refetchProducts();
@@ -420,7 +409,6 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
     }
 
     onSave({
-      commissionPercent: Number(commPercent) || 0,
       travelCharge: Number(travel) || 0,
       notes,
       purchaseDate,
@@ -441,7 +429,7 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
           {errorMsg && <Alert severity="error" sx={{ mb: 2 }}>{errorMsg}</Alert>}
           <Stack spacing={2} sx={{ mt: 0.5 }}>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   label="Purchase Date *"
                   type="date"
@@ -452,17 +440,7 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={6} sm={4}>
-                <TextField
-                  label="Commission %"
-                  type="number"
-                  value={commPercent}
-                  onChange={(e) => setCommPercent(e.target.value)}
-                  fullWidth
-                  size="small"
-                />
-              </Grid>
-              <Grid item xs={6} sm={4}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   label="Travel Charge ₹"
                   type="number"
@@ -493,7 +471,7 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
               <Grid item xs={3.5}>
                 <Autocomplete
                   options={sortedProducts}
-                  getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name} (${option.sku})`}
+                  getOptionLabel={(option) => (typeof option === 'string' ? option : (option?.name || ''))}
                   value={sortedProducts.find((p) => p._id === item.productId) || null}
                   onChange={(event, newValue) => {
                     updateItem(i, 'productId', newValue ? newValue._id : '');
@@ -539,12 +517,6 @@ const EditPurchaseDialog = ({ open, onClose, purchase, products = [], refetchPro
             <Typography variant="body2" color="text.secondary">
               Travel: <strong>{formatCurrency(travelChargeVal)}</strong>
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Total Bill: <strong>{formatCurrency(subtotal + travelChargeVal)}</strong>
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Commission: <strong>{formatCurrency(commAmount)}</strong>
-            </Typography>
             <Typography variant="subtitle1" fontWeight={800} color="primary.main">
               Total: {formatCurrency(totalAmount)}
             </Typography>
@@ -585,7 +557,6 @@ const ViewPurchaseDialog = ({ open, onClose, purchase, isAdmin, onEdit }) => {
   if (!purchase) return null;
   const paid = purchase.paidAmount || 0;
   const remaining = Math.max(0, purchase.totalAmount - paid);
-  const totalBill = (Number(purchase.subtotal) || 0) + (Number(purchase.travelCharge) || 0);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -633,8 +604,6 @@ const ViewPurchaseDialog = ({ open, onClose, purchase, isAdmin, onEdit }) => {
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
           <Typography variant="body2" color="text.secondary">Subtotal: <strong>{formatCurrency(purchase.subtotal)}</strong></Typography>
           <Typography variant="body2" color="text.secondary">Travel Charge: <strong>{formatCurrency(purchase.travelCharge)}</strong></Typography>
-          <Typography variant="body2" color="primary.main" fontWeight={700}>Total Bill (Subtotal + Travel): <strong>{formatCurrency(totalBill)}</strong></Typography>
-          <Typography variant="body2" color="text.secondary">Commission ({purchase.commissionPercent}%): <strong>{formatCurrency(purchase.commissionAmount)}</strong></Typography>
           <Typography variant="subtitle1" fontWeight={800} color="primary.main" sx={{ mt: 0.5 }}>Grand Total: {formatCurrency(purchase.totalAmount)}</Typography>
           <Typography variant="body2" color="success.main">Amount Paid: <strong>{formatCurrency(paid)}</strong></Typography>
           {remaining > 0 && (
@@ -793,10 +762,8 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                       <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Items</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Qty</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Subtotal</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Commission</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Travel Charge</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Total Bill</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Total</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Total Amount</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Paid</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Remaining</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Status</TableCell>
@@ -807,8 +774,6 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                     {purchases.map((p) => {
                       const totalQty = p.items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0;
                       const subtotal = Number(p.subtotal) || 0;
-                      const travelCharge = Number(p.travelCharge) || 0;
-                      const totalBill = subtotal + travelCharge;
                       const paid = p.paidAmount || 0;
                       const remaining = Math.max(0, p.totalAmount - paid);
                       const isPaid = p.paymentStatus === 'Paid';
@@ -821,9 +786,7 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                           <TableCell align="center" sx={{ fontSize: '0.8rem' }}>{p.items?.length || 0}</TableCell>
                           <TableCell align="center" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{totalQty}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(subtotal)}</TableCell>
-                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(p.commissionAmount || 0)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(p.travelCharge || 0)}</TableCell>
-                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatCurrency(totalBill)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatCurrency(p.totalAmount)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', color: 'success.main' }}>{formatCurrency(paid)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700, color: remaining > 0 ? 'error.main' : 'text.secondary' }}>

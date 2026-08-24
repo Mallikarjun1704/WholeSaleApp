@@ -13,7 +13,7 @@ import { useGetExpensesQuery, useCreateExpenseMutation, useDeleteExpenseMutation
 const formatCurrency = (v) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0);
 
-const EXPENSE_CATEGORIES = ['Rent', 'Salaries', 'Utilities', 'Travel', 'Tea & Snacks', 'Maintenance', 'Other'];
+const EXPENSE_CATEGORIES = ['Rent', 'Salaries', 'Utilities', 'Travel', 'Tea & Snacks', 'Maintenance', 'Commission', 'Other'];
 
 const Expenses = () => {
   const [openDialog, setOpenDialog] = useState(false);

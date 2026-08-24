@@ -41,7 +41,6 @@ import {
   CloudUpload as ImportIcon,
   Add as AddIcon,
   Compare as CompareIcon,
-  History as HistoryIcon,
   Search as SearchIcon,
   Clear as ClearIcon,
   FileDownload as ExportIcon,
@@ -57,7 +56,6 @@ import {
   useCreateWholesalerSellerMutation,
   useImportWholesalerPricesMutation,
   useGetWholesalerPricesQuery,
-  useGetWholesalerHistoryQuery,
   useDeleteSellerPricesMutation,
 } from '../api/wholesalerApi';
 
@@ -716,13 +714,10 @@ const ComparisonTab = ({ onSelectHistory }) => {
                           <TableCell
                             key={s._id}
                             align="center"
-                            onClick={() => onSelectHistory({ phoneName: row.phoneName, model: row.model, variant: row.variant, color: row.color, sellerId: s._id })}
                             sx={{
-                              cursor: 'pointer',
                               fontWeight: isLowest ? 800 : 400,
                               bgcolor: isLowest ? '#e8f5e9' : 'inherit',
                               color: isLowest ? '#2e7d32' : 'inherit',
-                              '&:hover': { bgcolor: '#c8e6c9' },
                             }}
                           >
                             {priceVal ? formatCurrency(priceVal) : '-'}
@@ -792,128 +787,10 @@ const ComparisonTab = ({ onSelectHistory }) => {
 };
 
 // ==========================================
-// 3. PRICE HISTORY TAB / MODAL
-// ==========================================
-const HistoryTab = ({ selectedParams, onClearSelected }) => {
-  const [phoneName, setPhoneName] = useState(selectedParams?.phoneName || '');
-  const [model, setModel] = useState(selectedParams?.model || '');
-  const [variant, setVariant] = useState(selectedParams?.variant || '');
-  const [color, setColor] = useState(selectedParams?.color || '');
-
-  React.useEffect(() => {
-    if (selectedParams) {
-      setPhoneName(selectedParams.phoneName || '');
-      setModel(selectedParams.model || '');
-      setVariant(selectedParams.variant || '');
-      setColor(selectedParams.color || '');
-    }
-  }, [selectedParams]);
-
-  const { data: historyData, isLoading } = useGetWholesalerHistoryQuery(
-    { phoneName, model, variant, color },
-    { skip: !phoneName }
-  );
-
-  const history = historyData?.data || [];
-
-  return (
-    <Box sx={{ mt: 2 }}>
-      <Card variant="outlined" sx={{ p: 2, mb: 2 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={3}>
-            <TextField
-              size="small"
-              fullWidth
-              label="Phone Name"
-              value={phoneName}
-              onChange={(e) => setPhoneName(e.target.value)}
-            />
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
-              size="small"
-              fullWidth
-              label="Model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            />
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
-              size="small"
-              fullWidth
-              label="Variant"
-              value={variant}
-              onChange={(e) => setVariant(e.target.value)}
-            />
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
-              size="small"
-              fullWidth
-              label="Color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-            />
-          </Grid>
-        </Grid>
-      </Card>
-
-      <Card variant="outlined">
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead sx={{ bgcolor: 'grey.100' }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Import Date</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Seller Name</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Product Name</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Variant & Color</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700 }}>Price</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={24} /></TableCell>
-                </TableRow>
-              ) : history.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                    {phoneName ? 'No historical price records found for this product.' : 'Enter a phone name to view price history.'}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                history.map((h, idx) => (
-                  <TableRow key={idx} hover>
-                    <TableCell>{new Date(h.importDate || h.createdAt).toLocaleDateString('en-IN')}</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>{h.seller?.name || h.sellerName}</TableCell>
-                    <TableCell>{h.phoneName} {h.model}</TableCell>
-                    <TableCell>{h.variant} {h.color}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 800, color: 'primary.main' }}>
-                      {formatCurrency(h.price)}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Card>
-    </Box>
-  );
-};
-
-// ==========================================
 // MAIN WHOLESALER COMPARISON MODULE PAGE
 // ==========================================
 const WholesalerComparisonModule = () => {
   const [activeTab, setActiveTab] = useState(0);
-  const [historyParams, setHistoryParams] = useState(null);
-
-  const handleSelectHistory = (params) => {
-    setHistoryParams(params);
-    setActiveTab(2); // Switch to Price History tab
-  };
 
   return (
     <Box sx={{ p: 1 }}>
@@ -939,13 +816,11 @@ const WholesalerComparisonModule = () => {
         >
           <Tab icon={<ImportIcon />} iconPosition="start" label="1. Import Price List" />
           <Tab icon={<CompareIcon />} iconPosition="start" label="2. Price Comparison" />
-          <Tab icon={<HistoryIcon />} iconPosition="start" label="3. Price History" />
         </Tabs>
       </Card>
 
       {activeTab === 0 && <ImportTab />}
-      {activeTab === 1 && <ComparisonTab onSelectHistory={handleSelectHistory} />}
-      {activeTab === 2 && <HistoryTab selectedParams={historyParams} onClearSelected={() => setHistoryParams(null)} />}
+      {activeTab === 1 && <ComparisonTab />}
     </Box>
   );
 };

@@ -41,6 +41,16 @@ export const customerApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Customers', 'Bills', 'Dashboard'],
     }),
+    getCustomerStatement: builder.query({
+      query: ({ id, startDate, endDate }) => {
+        const params = new URLSearchParams();
+        if (startDate) params.set('startDate', startDate);
+        if (endDate) params.set('endDate', endDate);
+        const qs = params.toString();
+        return `/customers/${id}/statement${qs ? `?${qs}` : ''}`;
+      },
+      providesTags: ['Customers', 'Bills'],
+    }),
   }),
 });
 
@@ -51,4 +61,5 @@ export const {
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
   useRecordCustomerPaymentMutation,
+  useGetCustomerStatementQuery,
 } = customerApi;

@@ -78,58 +78,38 @@ const importPrices = asyncHandler(async (req, res) => {
   // Parse raw text
   const { validRecords, skippedLines } = parseRawMessage(rawText, normRules);
 
-  let updatedCount = 0;
-  let createdCount = 0;
-  let unchangedCount = 0;
-  const updateLogs = [];
+  // Wipe existing prices for this seller to guarantee only the latest prices exist in DB
+  const deletedOld = await WholesalerPrice.deleteMany({ seller: seller._id });
 
+  // Deduplicate parsed records: if the same product appears multiple times in the raw text,
+  // keep only the last occurrence (which typically has the most accurate/latest price)
+  const dedupeMap = new Map();
   for (const item of validRecords) {
-    // Find current price record for this seller + product specs (independent of date)
-    const existing = await WholesalerPrice.findOne({
-      seller: seller._id,
-      phoneName: item.phoneName,
-      variant: item.variant,
-      color: item.color,
-    });
+    const key = `${item.phoneName.toUpperCase()}|${item.model.toUpperCase()}|${item.variant.toUpperCase()}|${(item.color || '').toUpperCase()}`;
+    dedupeMap.set(key, item); // last occurrence wins
+  }
+  const uniqueRecords = Array.from(dedupeMap.values());
 
-    if (existing) {
-      if (existing.price !== item.price) {
-        // Daily price change occurred -> Overwrite existing price record in place
-        const oldPrice = existing.price;
-        existing.price = item.price;
-        existing.importDate = targetDate;
-        existing.rawText = item.rawText;
-        existing.model = item.model;
-        await existing.save();
+  const docsToInsert = uniqueRecords.map((item) => ({
+    seller: seller._id,
+    sellerName: seller.name,
+    phoneName: item.phoneName.toUpperCase(),
+    model: item.model.toUpperCase(),
+    variant: item.variant.toUpperCase(),
+    color: item.color || '',
+    price: item.price,
+    importDate: targetDate,
+    rawText: item.rawText,
+  }));
 
-        updatedCount++;
-        updateLogs.push({
-          line: item.rawText,
-          reason: `Overwrote price: ₹${oldPrice} → ₹${item.price}`,
-        });
-      } else {
-        // Price unchanged -> Update timestamp without creating historical log
-        existing.importDate = targetDate;
-        existing.rawText = item.rawText;
-        await existing.save();
-
-        unchangedCount++;
+  if (docsToInsert.length > 0) {
+    try {
+      await WholesalerPrice.insertMany(docsToInsert, { ordered: false });
+    } catch (bulkErr) {
+      // If some docs failed due to duplicate key, the rest are still inserted when ordered:false
+      if (bulkErr.code !== 11000 && !bulkErr.writeErrors) {
+        throw bulkErr;
       }
-    } else {
-      // New product record -> Create single current price entry
-      await WholesalerPrice.create({
-        seller: seller._id,
-        sellerName: seller.name,
-        phoneName: item.phoneName,
-        model: item.model,
-        variant: item.variant,
-        color: item.color,
-        price: item.price,
-        importDate: targetDate,
-        rawText: item.rawText,
-      });
-
-      createdCount++;
     }
   }
 
@@ -137,14 +117,12 @@ const importPrices = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    message: `Processed price import for ${seller.name}: ${createdCount} new products, ${updatedCount} prices overwritten/updated, ${unchangedCount} unchanged`,
-    importedCount: createdCount + updatedCount,
-    createdCount,
-    updatedCount,
-    unchangedCount,
+    message: `Imported ${docsToInsert.length} latest prices for ${seller.name} (wiped ${deletedOld.deletedCount} prior records)`,
+    importedCount: docsToInsert.length,
+    createdCount: docsToInsert.length,
+    wipedCount: deletedOld.deletedCount,
     skippedCount: allSkipped.length,
     skippedLines: allSkipped,
-    updateLogs,
   });
 });
 
@@ -212,21 +190,21 @@ const getComparisonPrices = asyncHandler(async (req, res) => {
   // MongoDB Aggregation Pipeline:
   // 1. Match filters
   // 2. Sort by importDate DESC so newest records come first
-  // 3. Group by (phoneName, variant) keeping latest price per seller
+  // 3. Group by uppercase (phoneName, variant) keeping latest price per seller
   const pipeline = [
     { $match: matchStage },
     { $sort: { importDate: -1, createdAt: -1 } },
     {
       $group: {
         _id: {
-          phoneName: '$phoneName',
-          variant: '$variant',
+          phoneName: { $toUpper: '$phoneName' },
+          variant: { $toUpper: '$variant' },
           seller: '$seller',
         },
         sellerName: { $first: '$sellerName' },
         price: { $first: '$price' },
         importDate: { $first: '$importDate' },
-        model: { $first: '$model' },
+        model: { $first: { $toUpper: '$model' } },
         color: { $first: '$color' },
         priceId: { $first: '$_id' },
       },

@@ -29,10 +29,10 @@ export const billingApi = apiSlice.injectEndpoints({
       invalidatesTags: ['Bills', 'Customers', 'Products', 'Batches', 'Dashboard'],
     }),
     updateBillPayment: builder.mutation({
-      query: ({ id, status, amount }) => ({
+      query: ({ id, ...data }) => ({
         url: `/billing/${id}/payment`,
         method: 'PATCH',
-        body: { status, amount },
+        body: data,
       }),
       invalidatesTags: ['Bills', 'Customers', 'Dashboard'],
     }),

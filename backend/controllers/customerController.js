@@ -245,8 +245,11 @@ const recordCustomerPayment = asyncHandler(async (req, res) => {
   // Log activity
   await ActivityLog.create({
     userId: req.user?._id,
+    userName: req.user?.fullName || 'System',
     action: 'PAYMENT',
-    details: `Bulk payment of ₹${totalDistributed} recorded for store "${customer.shopName}"`,
+    resource: 'CUSTOMER',
+    resourceId: customer._id,
+    description: `Bulk payment of ₹${totalDistributed} recorded for store "${customer.shopName}"`,
   });
 
   res.status(200).json({
@@ -259,6 +262,177 @@ const recordCustomerPayment = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Helper to compute statement data for a customer in a date range
+ */
+const computeCustomerStatement = async (customerId, startDate, endDate) => {
+  const customer = await Customer.findById(customerId);
+  if (!customer) return null;
+
+  const now = new Date();
+  const start = startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
+  start.setHours(0, 0, 0, 0);
+
+  const end = endDate ? new Date(endDate) : new Date();
+  end.setHours(23, 59, 59, 999);
+
+  // Period Bills
+  const bills = await Bill.find({
+    customer: customerId,
+    status: { $ne: 'Cancelled' },
+    $expr: {
+      $and: [
+        { $gte: [{ $ifNull: ['$billDate', '$createdAt'] }, start] },
+        { $lte: [{ $ifNull: ['$billDate', '$createdAt'] }, end] },
+      ],
+    },
+  }).sort({ billDate: 1, createdAt: 1 });
+
+  // Period Payments
+  const allCustomerBills = await Bill.find({ customer: customerId, status: { $ne: 'Cancelled' } });
+  const payments = [];
+  allCustomerBills.forEach((b) => {
+    const bPayments = Array.isArray(b.payments) && b.payments.length > 0 ? b.payments : [];
+    const recordedTotal = bPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalPaidOnBill = b.paidAmount || 0;
+
+    // Collect all recorded payments
+    bPayments.forEach((p) => {
+      const pDate = new Date(p.paymentDate || b.billDate || b.createdAt);
+      if (pDate >= start && pDate <= end) {
+        payments.push({
+          _id: p._id,
+          billId: b._id,
+          billNumber: b.billNumber,
+          amount: p.amount,
+          paymentDate: pDate,
+          paymentMethod: p.paymentMethod || b.paymentMethod || 'Cash',
+          note: p.note || '',
+        });
+      }
+    });
+
+    // If there's an unlogged initial paid amount on the bill
+    if (totalPaidOnBill > recordedTotal) {
+      const unloggedAmount = totalPaidOnBill - recordedTotal;
+      const bDate = new Date(b.billDate || b.createdAt);
+      if (bDate >= start && bDate <= end) {
+        payments.push({
+          billId: b._id,
+          billNumber: b.billNumber,
+          amount: unloggedAmount,
+          paymentDate: bDate,
+          paymentMethod: b.paymentMethod || 'Cash',
+          note: 'Initial payment at bill creation',
+        });
+      }
+    }
+  });
+  payments.sort((a, b) => new Date(a.paymentDate) - new Date(b.paymentDate));
+
+  const totalBilled = Math.round(bills.reduce((sum, b) => sum + (b.finalAmount || 0), 0));
+  const totalPaid = Math.round(payments.reduce((sum, p) => sum + (p.amount || 0), 0));
+
+  // Prior bills & payments for opening balance
+  const priorBills = await Bill.find({
+    customer: customerId,
+    status: { $ne: 'Cancelled' },
+    $expr: { $lt: [{ $ifNull: ['$billDate', '$createdAt'] }, start] },
+  });
+  const priorBilled = priorBills.reduce((sum, b) => sum + (b.finalAmount || 0), 0);
+  let priorPaid = 0;
+  allCustomerBills.forEach((b) => {
+    const bPayments = Array.isArray(b.payments) && b.payments.length > 0 ? b.payments : [];
+    const recordedTotal = bPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalPaidOnBill = b.paidAmount || 0;
+
+    bPayments.forEach((p) => {
+      const pDate = new Date(p.paymentDate || b.billDate || b.createdAt);
+      if (pDate < start) {
+        priorPaid += (p.amount || 0);
+      }
+    });
+
+    if (totalPaidOnBill > recordedTotal) {
+      const unloggedAmount = totalPaidOnBill - recordedTotal;
+      const bDate = new Date(b.billDate || b.createdAt);
+      if (bDate < start) {
+        priorPaid += unloggedAmount;
+      }
+    }
+  });
+  const openingBalance = Math.max(0, Math.round(priorBilled - priorPaid));
+  const closingBalance = Math.max(0, Math.round(openingBalance + totalBilled - totalPaid));
+
+  return {
+    customer,
+    period: {
+      startDate: start,
+      endDate: end,
+    },
+    openingBalance,
+    totalBilled,
+    totalPaid,
+    closingBalance,
+    currentOutstanding: customer.pendingCredit || 0,
+    bills,
+    payments,
+  };
+};
+
+/**
+ * @desc    Get customer bill statement and payment history by date range
+ * @route   GET /api/customers/:id/statement
+ * @access  Private
+ */
+const getCustomerStatement = asyncHandler(async (req, res) => {
+  const { startDate, endDate } = req.query;
+  const statement = await computeCustomerStatement(req.params.id, startDate, endDate);
+
+  if (!statement) {
+    return res.status(404).json({ success: false, message: 'Customer not found' });
+  }
+
+  res.status(200).json({
+    success: true,
+    data: statement,
+  });
+});
+
+/**
+ * @desc    Download customer bill statement PDF
+ * @route   GET /api/customers/:id/statement/pdf
+ * @access  Private
+ */
+const getCustomerStatementPdf = asyncHandler(async (req, res) => {
+  const { startDate, endDate } = req.query;
+  const statement = await computeCustomerStatement(req.params.id, startDate, endDate);
+
+  if (!statement) {
+    return res.status(404).json({ success: false, message: 'Customer not found' });
+  }
+
+  const { generateCustomerStatementPdfStream } = require('../utils/pdfGenerator');
+  const Setting = require('../models/Setting');
+  const settings = await Setting.getSettings();
+
+  const pdfStream = generateCustomerStatementPdfStream(statement, settings);
+
+  const cleanShopName = (statement.customer?.shopName || 'Customer')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_');
+  const startStr = new Date(statement.period.startDate).toISOString().slice(0, 10);
+  const endStr = new Date(statement.period.endDate).toISOString().slice(0, 10);
+  const filename = `Statement_${cleanShopName}_${startStr}_to_${endStr}.pdf`;
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+  pdfStream.pipe(res);
+  pdfStream.end();
+});
+
 module.exports = {
   getCustomers,
   getCustomerById,
@@ -266,4 +440,6 @@ module.exports = {
   updateCustomer,
   deleteCustomer,
   recordCustomerPayment,
+  getCustomerStatement,
+  getCustomerStatementPdf,
 };

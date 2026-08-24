@@ -48,12 +48,16 @@ const style = document.createElement('style');
 style.textContent = globalStyles;
 document.head.appendChild(style);
 
-// Prevent mouse wheel scrolling from changing number input values
-document.addEventListener('wheel', () => {
-  if (document.activeElement && document.activeElement.type === 'number') {
-    document.activeElement.blur();
-  }
-}, { passive: true });
+// Prevent mouse wheel scrolling from unintentionally incrementing number inputs only when the wheel event targets the number input directly
+document.addEventListener(
+  'wheel',
+  (e) => {
+    if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
+      e.target.blur();
+    }
+  },
+  { passive: true }
+);
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

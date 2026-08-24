@@ -3,6 +3,7 @@ import {
   Box, Typography, Card, Button, TextField, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, Skeleton, Divider, Grid, Stack, Tabs, Tab, Alert, Paper, Autocomplete,
+  FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon,
@@ -268,7 +269,7 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
               <Grid item xs={4}>
                 <Autocomplete
                   options={sortedProducts}
-                  getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name} (${option.sku})`}
+                  getOptionLabel={(option) => (typeof option === 'string' ? option : (option?.name || ''))}
                   value={sortedProducts.find((p) => p._id === item.productId) || null}
                   onChange={(event, newValue) => {
                     updateItem(i, 'productId', newValue ? newValue._id : '');
@@ -337,6 +338,9 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
 // ========== Record Partial / Full Payment Dialog ==========
 const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
   const [payAmount, setPayAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
 
   React.useEffect(() => {
     if (bill) {
@@ -344,6 +348,9 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
       const paid = bill.paidAmount || 0;
       const rem = Math.max(0, total - paid);
       setPayAmount(rem > 0 ? rem : total);
+      setPaymentMethod(bill.paymentMethod || 'Cash');
+      setPaymentDate(new Date().toISOString().slice(0, 10));
+      setNote('');
     }
   }, [open, bill]);
 
@@ -382,15 +389,50 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
               This bill is currently marked as <strong>Paid</strong>. You can revert it to <strong>Unpaid (Pending)</strong> if needed.
             </Alert>
           ) : (
-            <TextField
-              label="Payment Amount ₹ *"
-              type="number"
-              value={payAmount}
-              onChange={(e) => setPayAmount(e.target.value)}
-              fullWidth
-              size="small"
-              inputProps={{ min: 1, max: remaining }}
-            />
+            <>
+              <TextField
+                label="Payment Amount ₹ *"
+                type="number"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                fullWidth
+                size="small"
+                inputProps={{ min: 1, max: remaining }}
+              />
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Payment Method</InputLabel>
+                    <Select value={paymentMethod} label="Payment Method" onChange={(e) => setPaymentMethod(e.target.value)}>
+                      <MenuItem value="Cash">Cash</MenuItem>
+                      <MenuItem value="UPI">UPI</MenuItem>
+                      <MenuItem value="Card">Card</MenuItem>
+                      <MenuItem value="Net Banking">Net Banking</MenuItem>
+                      <MenuItem value="Cheque">Cheque</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Payment Date"
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    fullWidth
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              </Grid>
+              <TextField
+                label="Note / Reference"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                fullWidth
+                size="small"
+                placeholder="Optional remark..."
+              />
+            </>
           )}
         </Stack>
       </DialogContent>
@@ -411,7 +453,7 @@ const RecordPaymentDialog = ({ open, onClose, bill, onSave, isLoading }) => {
             <Button
               variant="contained"
               color="primary"
-              onClick={() => onSave({ amount: Number(payAmount) })}
+              onClick={() => onSave({ amount: Number(payAmount), paymentMethod, note, paymentDate })}
               disabled={isLoading || !payAmount || Number(payAmount) <= 0}
             >
               {isLoading ? 'Saving...' : 'Submit Payment'}
@@ -547,7 +589,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
             <Grid item xs={4}>
               <Autocomplete
                   options={products.filter(p => p.stock > 0).sort((a, b) => (a.name || '').localeCompare(b.name || ''))}
-                  getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name} (${option.sku}) [Stock: ${option.stock}]`}
+                  getOptionLabel={(option) => (typeof option === 'string' ? option : (option?.name || ''))}
                   value={products.find(p => p._id === item.productId) || null}
                   onChange={(event, newValue) => {
                     updateItem(i, 'productId', newValue ? newValue._id : '');
@@ -558,7 +600,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
                   )}
                   renderOption={(props, option) => (
                     <li {...props} key={option._id}>
-                      {option.name} ({option.sku}) [Stock: {option.stock}]
+                      {option.name}
                     </li>
                   )}
                 />

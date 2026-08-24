@@ -101,3 +101,51 @@ export const openBillPdf = async (billId) => {
     alert('Error opening PDF bill: ' + (err.message || 'Server error'));
   }
 };
+
+/**
+ * Trigger browser download of Customer Statement PDF
+ */
+export const downloadCustomerStatementPdf = async (customerId, startDate, endDate, customer) => {
+  try {
+    const token = getAuthToken();
+    const params = new URLSearchParams();
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+    const qs = params.toString();
+
+    const response = await fetch(`/api/customers/${customerId}/statement/pdf${qs ? `?${qs}` : ''}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) throw new Error('Failed to generate Customer Statement PDF');
+
+    let filename = '';
+    const disposition = response.headers.get('Content-Disposition');
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    if (!filename) {
+      const cleanName = (customer?.shopName || 'Customer').replace(/[^a-zA-Z0-9]+/g, '_');
+      filename = `Statement_${cleanName}_${startDate || ''}_to_${endDate || ''}.pdf`;
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+  } catch (err) {
+    console.error('Statement PDF download error:', err);
+    alert('Error downloading Statement PDF: ' + (err.message || 'Server error'));
+  }
+};

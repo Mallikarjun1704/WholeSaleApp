@@ -145,6 +145,13 @@ const createBill = asyncHandler(async (req, res) => {
     status,
     billDate: billDate ? new Date(billDate) : new Date(),
     paidDate: status === 'Paid' ? new Date() : null,
+    payments: initialPaid > 0 ? [{
+      amount: initialPaid,
+      paymentDate: billDate ? new Date(billDate) : new Date(),
+      paymentMethod: paymentMethod || 'Cash',
+      note: 'Initial payment at bill creation',
+      recordedBy: req.user?._id,
+    }] : [],
   });
 
   // Deduct stock from products and batches (FIFO)
@@ -263,7 +270,7 @@ const getBillsByCustomer = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const updateBillPaymentStatus = asyncHandler(async (req, res) => {
-  const { status, amount, setPaidAmount, paymentMethod, note } = req.body;
+  const { status, amount, setPaidAmount, paymentMethod, note, paymentDate } = req.body;
 
   // Only master / admin can update payment status
   if (req.user?.role !== 'admin') {
@@ -308,7 +315,7 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
     logAmount = Math.max(0, billTotal - currentPaid);
     newPaidAmount = billTotal;
     newStatus = 'Paid';
-    bill.paidDate = new Date();
+    bill.paidDate = paymentDate ? new Date(paymentDate) : new Date();
     logPayment = logAmount > 0;
     logNote = logNote || 'Marked as fully Paid by Admin';
   } else if (setPaidAmount !== undefined && !isNaN(Number(setPaidAmount))) {
@@ -318,7 +325,7 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
     newPaidAmount = targetPaid;
     if (newPaidAmount >= billTotal) {
       newStatus = 'Paid';
-      bill.paidDate = bill.paidDate || new Date();
+      bill.paidDate = paymentDate ? new Date(paymentDate) : (bill.paidDate || new Date());
     } else if (newPaidAmount > 0) {
       newStatus = 'Partially Paid';
       bill.paidDate = null;
@@ -343,7 +350,7 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
 
     if (newPaidAmount >= billTotal) {
       newStatus = 'Paid';
-      bill.paidDate = new Date();
+      bill.paidDate = paymentDate ? new Date(paymentDate) : new Date();
     } else if (newPaidAmount > 0) {
       newStatus = 'Partially Paid';
       bill.paidDate = null;
@@ -358,13 +365,13 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
   bill.paidAmount = newPaidAmount;
   bill.status = newStatus;
 
-  if (logPayment) {
+  if (logPayment && logAmount > 0) {
     if (!bill.payments) {
       bill.payments = [];
     }
     bill.payments.push({
       amount: logAmount,
-      paymentDate: new Date(),
+      paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
       paymentMethod: paymentMethod || bill.paymentMethod || 'Cash',
       note: logNote,
       recordedBy: req.user?._id,
@@ -383,6 +390,21 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
     await Customer.findByIdAndUpdate(bill.customer, {
       pendingCredit: Math.max(0, Math.round(newPendingCredit)),
     });
+  }
+
+  // Log activity safely
+  try {
+    const ActivityLog = require('../models/ActivityLog');
+    await ActivityLog.create({
+      userId: req.user?._id,
+      userName: req.user?.fullName || 'System',
+      action: 'PAYMENT',
+      resource: 'BILL',
+      resourceId: bill._id,
+      description: `Payment of ₹${logAmount} recorded for bill ${bill.billNumber} (${newStatus})`,
+    });
+  } catch (logErr) {
+    console.error('Activity log error in updateBillPaymentStatus:', logErr.message);
   }
 
   const updatedBill = await Bill.findById(bill._id)

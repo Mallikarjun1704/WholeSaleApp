@@ -227,17 +227,33 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   ]);
   const totalQuantitySold = totalQuantitySoldAgg[0]?.totalQtySold || 0;
 
-  // 17. Total & Monthly Commission and Travel Charge from Supplier Bills (Purchases)
+  // 17. Total & Monthly Commission from Expense Section (category === 'Commission')
+  const totalCommissionAgg = await Expense.aggregate([
+    { $match: { category: 'Commission' } },
+    { $group: { _id: null, totalComm: { $sum: '$amount' } } },
+  ]);
+  const totalCommission = totalCommissionAgg[0]?.totalComm || 0;
+
+  const monthlyCommissionAgg = await Expense.aggregate([
+    {
+      $match: {
+        category: 'Commission',
+        date: { $gte: startOfMonth, $lte: endOfMonth },
+      },
+    },
+    { $group: { _id: null, monthlyComm: { $sum: '$amount' } } },
+  ]);
+  const monthlyCommission = monthlyCommissionAgg[0]?.monthlyComm || 0;
+
+  // 18. Travel Charge from Supplier Bills (Purchases)
   const totalSupplierBillAgg = await Purchase.aggregate([
     {
       $group: {
         _id: null,
-        totalComm: { $sum: '$commissionAmount' },
         totalTravel: { $sum: '$travelCharge' },
       },
     },
   ]);
-  const totalCommission = totalSupplierBillAgg[0]?.totalComm || 0;
   const totalTravelCharge = totalSupplierBillAgg[0]?.totalTravel || 0;
 
   const monthlySupplierBillAgg = await Purchase.aggregate([
@@ -245,12 +261,10 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     {
       $group: {
         _id: null,
-        monthlyComm: { $sum: '$commissionAmount' },
         monthlyTravel: { $sum: '$travelCharge' },
       },
     },
   ]);
-  const monthlyCommission = monthlySupplierBillAgg[0]?.monthlyComm || 0;
   const monthlyTravelCharge = monthlySupplierBillAgg[0]?.monthlyTravel || 0;
 
   res.status(200).json({
