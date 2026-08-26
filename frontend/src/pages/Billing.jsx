@@ -62,7 +62,10 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
               height: 44,
               borderRadius: '10px',
               objectFit: 'contain',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              bgcolor: '#000',
+              p: 0.3,
+              boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
+              border: '1px solid rgba(14, 165, 233, 0.3)',
             }}
           />
           <Box>

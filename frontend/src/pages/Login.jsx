@@ -136,9 +136,10 @@ const Login = () => {
                 objectFit: 'contain',
                 mx: 'auto',
                 mb: 1.5,
-                bgcolor: '#fff',
+                bgcolor: '#000',
                 p: 0.5,
-                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.25)',
+                boxShadow: '0 8px 30px rgba(14, 165, 233, 0.35)',
+                border: '1px solid rgba(14, 165, 233, 0.35)',
               }}
             />
             <Typography

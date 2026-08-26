@@ -13,9 +13,10 @@
     "start": "npm run start:backend",
     "seed": "cd backend && npm run seed",
     "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "clean:dist": "node -e \"const fs = require('fs'); try { fs.rmSync('dist-electron', { recursive: true, force: true }); } catch (e) {}\"",
     "electron:start": "electron .",
     "electron:dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"electron .\"",
-    "electron:build": "npm run build:frontend && electron-builder --win"
+    "electron:build": "npm run clean:dist && npm run build:frontend && electron-builder --win"
   },
   "keywords": [
     "wholesale",
@@ -35,17 +36,19 @@
     "appId": "com.tmw.wholesale",
     "productName": "TMW",
     "directories": {
-      "output": "dist-electron"
+      "output": "dist-electron",
+      "buildResources": "build"
     },
     "files": [
       "backend/**/*",
       "frontend/dist/**/*",
       "electron/**/*",
+      "build/**/*",
       "package.json"
     ],
     "win": {
       "target": "nsis",
-      "icon": "electron/icon.png"
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,

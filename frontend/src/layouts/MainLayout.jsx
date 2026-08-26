@@ -144,9 +144,10 @@ const MainLayout = () => {
               borderRadius: '10px',
               objectFit: 'contain',
               flexShrink: 0,
-              bgcolor: '#fff',
+              bgcolor: '#000',
               p: 0.3,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+              boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
+              border: '1px solid rgba(14, 165, 233, 0.3)',
             }}
           />
           {sidebarOpen && (
