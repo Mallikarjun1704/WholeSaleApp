@@ -31,6 +31,7 @@ if (!isDev) {
 }
 
 function createLoadingWindow() {
+  const appIconPath = path.join(__dirname, 'icon.png');
   loadingWindow = new BrowserWindow({
     width: 420,
     height: 340,
@@ -38,6 +39,7 @@ function createLoadingWindow() {
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
+    icon: appIconPath,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -49,10 +51,12 @@ function createLoadingWindow() {
 }
 
 function createMainWindow() {
+  const appIconPath = path.join(__dirname, 'icon.png');
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     show: false, // Hidden until ready
+    icon: appIconPath,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

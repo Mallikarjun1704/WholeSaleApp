@@ -19,7 +19,6 @@ import {
 import {
   Visibility,
   VisibilityOff,
-  PhoneAndroid as PhoneIcon,
   LockOutlined,
   PersonOutline,
 } from '@mui/icons-material';
@@ -125,37 +124,38 @@ const Login = () => {
       >
         <CardContent sx={{ p: 4 }}>
           {/* Logo & Title */}
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Box sx={{ textAlign: 'center', mb: 3.5 }}>
             <Box
+              component="img"
+              src="/app_logo.png"
+              alt="TMW Logo"
               sx={{
-                width: 72,
-                height: 72,
-                borderRadius: '20px',
-                background: 'linear-gradient(135deg, #6366F1 0%, #0EA5E9 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                width: 80,
+                height: 80,
+                borderRadius: '18px',
+                objectFit: 'contain',
                 mx: 'auto',
-                mb: 2,
-                boxShadow: '0 8px 32px rgba(99, 102, 241, 0.35)',
+                mb: 1.5,
+                bgcolor: '#fff',
+                p: 0.5,
+                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.25)',
               }}
-            >
-              <PhoneIcon sx={{ fontSize: 36, color: '#fff' }} />
-            </Box>
+            />
             <Typography
               variant="h4"
               sx={{
                 fontWeight: 800,
-                background: 'linear-gradient(135deg, #6366F1, #0EA5E9)',
+                background: 'linear-gradient(135deg, #1E40AF, #0284C7)',
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 color: 'transparent',
                 mb: 0.5,
+                letterSpacing: 0.8,
               }}
             >
               TMW
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" fontWeight={500}>
               Wholesale Mobile Store Management
             </Typography>
           </Box>

@@ -303,11 +303,12 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
   let logNote = note || '';
 
   // Handle explicit revert to Unpaid / Pending
-  if (status === 'Pending' || status === 'Unpaid' || req.body.action === 'revert') {
+  if (status === 'Pending' || status === 'Unpaid' || req.body.action === 'revert' || (setPaidAmount !== undefined && Number(setPaidAmount) === 0)) {
     newPaidAmount = 0;
     newStatus = 'Pending';
     bill.paidDate = null;
-    logPayment = true;
+    bill.payments = [];
+    logPayment = false;
     logAmount = 0;
     logNote = logNote || 'Payment status reverted to Unpaid (Pending) by Admin';
   } else if (status === 'Paid') {
@@ -333,19 +334,49 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
       newStatus = 'Pending';
       bill.paidDate = null;
     }
-    logPayment = true;
-    logNote = logNote || `Paid amount set to ₹${newPaidAmount} by Admin`;
+
+    if (newPaidAmount === 0) {
+      bill.payments = [];
+      logPayment = false;
+    } else {
+      bill.payments = [
+        {
+          amount: newPaidAmount,
+          paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+          paymentMethod: paymentMethod || bill.paymentMethod || 'Cash',
+          note: note || `Paid amount set to ₹${newPaidAmount} by Admin`,
+          recordedBy: req.user?._id,
+        },
+      ];
+      logPayment = false;
+    }
   } else if (amount !== undefined && amount !== null && !isNaN(Number(amount))) {
     // Add additional payment amount (e.g. paying partial/full balance)
     const payAmount = Number(amount);
-    if (payAmount < 0) {
-      // Revert/decrease paid amount
+    if (payAmount <= 0) {
+      // Revert / decrease paid amount
       newPaidAmount = Math.max(0, currentPaid + payAmount);
+      if (newPaidAmount === 0) {
+        bill.payments = [];
+      } else {
+        // Adjust existing payment logs or set single log
+        bill.payments = [
+          {
+            amount: newPaidAmount,
+            paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+            paymentMethod: paymentMethod || bill.paymentMethod || 'Cash',
+            note: note || `Paid amount adjusted to ₹${newPaidAmount}`,
+            recordedBy: req.user?._id,
+          },
+        ];
+      }
+      logPayment = false;
     } else {
       const remaining = Math.max(0, billTotal - currentPaid);
       const applied = Math.min(remaining, payAmount);
       newPaidAmount = currentPaid + applied;
       logAmount = applied;
+      logPayment = true;
     }
 
     if (newPaidAmount >= billTotal) {
@@ -358,7 +389,6 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
       newStatus = 'Pending';
       bill.paidDate = null;
     }
-    logPayment = true;
     logNote = logNote || 'Payment updated by Admin';
   }
 
@@ -426,7 +456,7 @@ const updateBillPaymentStatus = asyncHandler(async (req, res) => {
 const getBillPdf = asyncHandler(async (req, res) => {
   const bill = await Bill.findById(req.params.id)
     .populate('customer', 'shopName ownerName name phone address gstNumber pendingCredit')
-    .populate('items.product', 'name sku brand category');
+    .populate('items.product', 'name sku brand category imeiList imeiTracking');
 
   if (!bill) {
     return res.status(404).json({ success: false, message: 'Bill not found' });

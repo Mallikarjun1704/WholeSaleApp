@@ -291,78 +291,93 @@ const computeCustomerStatement = async (customerId, startDate, endDate) => {
   // Period Payments
   const allCustomerBills = await Bill.find({ customer: customerId, status: { $ne: 'Cancelled' } });
   const payments = [];
+
   allCustomerBills.forEach((b) => {
+    // If the bill has 0 or no paidAmount (e.g. reversed/unpaid), skip its payments
+    const totalPaidOnBill = Number(b.paidAmount) || 0;
+    if (totalPaidOnBill <= 0) return;
+
     const bPayments = Array.isArray(b.payments) && b.payments.length > 0 ? b.payments : [];
-    const recordedTotal = bPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-    const totalPaidOnBill = b.paidAmount || 0;
+    const recordedTotal = bPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
-    // Collect all recorded payments
-    bPayments.forEach((p) => {
-      const pDate = new Date(p.paymentDate || b.billDate || b.createdAt);
-      if (pDate >= start && pDate <= end) {
-        payments.push({
-          _id: p._id,
-          billId: b._id,
-          billNumber: b.billNumber,
-          amount: p.amount,
-          paymentDate: pDate,
-          paymentMethod: p.paymentMethod || b.paymentMethod || 'Cash',
-          note: p.note || '',
-        });
+    let remainingBudget = totalPaidOnBill;
+
+    if (recordedTotal > 0 && recordedTotal <= totalPaidOnBill) {
+      bPayments.forEach((p) => {
+        const pAmt = Number(p.amount) || 0;
+        if (pAmt <= 0) return;
+        const pDate = new Date(p.paymentDate || b.billDate || b.createdAt);
+        if (pDate >= start && pDate <= end) {
+          payments.push({
+            _id: p._id,
+            billId: b._id,
+            billNumber: b.billNumber,
+            amount: pAmt,
+            paymentDate: pDate,
+            paymentMethod: p.paymentMethod || b.paymentMethod || 'Cash',
+            note: p.note || '',
+          });
+        }
+      });
+
+      // If there's an unlogged initial paid amount on the bill
+      if (totalPaidOnBill > recordedTotal) {
+        const unloggedAmount = totalPaidOnBill - recordedTotal;
+        const bDate = new Date(b.billDate || b.createdAt);
+        if (bDate >= start && bDate <= end) {
+          payments.push({
+            billId: b._id,
+            billNumber: b.billNumber,
+            amount: unloggedAmount,
+            paymentDate: bDate,
+            paymentMethod: b.paymentMethod || 'Cash',
+            note: 'Initial payment at bill creation',
+          });
+        }
       }
-    });
+    } else {
+      // If recordedTotal > totalPaidOnBill (e.g. historical reversal records), only take payments up to totalPaidOnBill
+      bPayments.forEach((p) => {
+        if (remainingBudget <= 0) return;
+        const rawAmt = Number(p.amount) || 0;
+        if (rawAmt <= 0) return;
+        const pAmt = Math.min(rawAmt, remainingBudget);
+        remainingBudget -= pAmt;
+        const pDate = new Date(p.paymentDate || b.billDate || b.createdAt);
+        if (pDate >= start && pDate <= end) {
+          payments.push({
+            _id: p._id,
+            billId: b._id,
+            billNumber: b.billNumber,
+            amount: pAmt,
+            paymentDate: pDate,
+            paymentMethod: p.paymentMethod || b.paymentMethod || 'Cash',
+            note: p.note || '',
+          });
+        }
+      });
 
-    // If there's an unlogged initial paid amount on the bill
-    if (totalPaidOnBill > recordedTotal) {
-      const unloggedAmount = totalPaidOnBill - recordedTotal;
-      const bDate = new Date(b.billDate || b.createdAt);
-      if (bDate >= start && bDate <= end) {
-        payments.push({
-          billId: b._id,
-          billNumber: b.billNumber,
-          amount: unloggedAmount,
-          paymentDate: bDate,
-          paymentMethod: b.paymentMethod || 'Cash',
-          note: 'Initial payment at bill creation',
-        });
+      if (remainingBudget > 0) {
+        const bDate = new Date(b.billDate || b.createdAt);
+        if (bDate >= start && bDate <= end) {
+          payments.push({
+            billId: b._id,
+            billNumber: b.billNumber,
+            amount: remainingBudget,
+            paymentDate: bDate,
+            paymentMethod: b.paymentMethod || 'Cash',
+            note: 'Payment at bill creation',
+          });
+        }
       }
     }
   });
+
   payments.sort((a, b) => new Date(a.paymentDate) - new Date(b.paymentDate));
 
   const totalBilled = Math.round(bills.reduce((sum, b) => sum + (b.finalAmount || 0), 0));
   const totalPaid = Math.round(payments.reduce((sum, p) => sum + (p.amount || 0), 0));
-
-  // Prior bills & payments for opening balance
-  const priorBills = await Bill.find({
-    customer: customerId,
-    status: { $ne: 'Cancelled' },
-    $expr: { $lt: [{ $ifNull: ['$billDate', '$createdAt'] }, start] },
-  });
-  const priorBilled = priorBills.reduce((sum, b) => sum + (b.finalAmount || 0), 0);
-  let priorPaid = 0;
-  allCustomerBills.forEach((b) => {
-    const bPayments = Array.isArray(b.payments) && b.payments.length > 0 ? b.payments : [];
-    const recordedTotal = bPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-    const totalPaidOnBill = b.paidAmount || 0;
-
-    bPayments.forEach((p) => {
-      const pDate = new Date(p.paymentDate || b.billDate || b.createdAt);
-      if (pDate < start) {
-        priorPaid += (p.amount || 0);
-      }
-    });
-
-    if (totalPaidOnBill > recordedTotal) {
-      const unloggedAmount = totalPaidOnBill - recordedTotal;
-      const bDate = new Date(b.billDate || b.createdAt);
-      if (bDate < start) {
-        priorPaid += unloggedAmount;
-      }
-    }
-  });
-  const openingBalance = Math.max(0, Math.round(priorBilled - priorPaid));
-  const closingBalance = Math.max(0, Math.round(openingBalance + totalBilled - totalPaid));
+  const closingBalance = Math.max(0, Math.round(totalBilled - totalPaid));
 
   return {
     customer,
@@ -370,7 +385,7 @@ const computeCustomerStatement = async (customerId, startDate, endDate) => {
       startDate: start,
       endDate: end,
     },
-    openingBalance,
+    openingBalance: 0,
     totalBilled,
     totalPaid,
     closingBalance,

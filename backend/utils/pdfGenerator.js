@@ -1,4 +1,17 @@
 const PdfPrinter = require('pdfmake');
+const fs = require('fs');
+const path = require('path');
+
+// Load TM logo as Base64 for PDFKit/pdfmake
+let tmLogoBase64 = null;
+try {
+  const logoPath = path.join(__dirname, '../assets/tm_logo.png');
+  if (fs.existsSync(logoPath)) {
+    tmLogoBase64 = 'data:image/jpeg;base64,' + fs.readFileSync(logoPath).toString('base64');
+  }
+} catch (e) {
+  console.error('Error reading tm_logo.png:', e.message);
+}
 
 // Use standard Helvetica fonts built into pdfmake/pdfkit
 const fonts = {
@@ -68,11 +81,23 @@ const generateBillPdfStream = (bill, settings = {}) => {
       const isEven = index % 2 === 0;
       const rowBg = isEven ? '#FFFFFF' : '#F8FAFC';
       const itemName = item.name || item.product?.name || 'Mobile Product';
-      const sku = item.product?.sku ? ` (${item.product.sku})` : '';
+
+      // Build item name with IMEI if available
+      const imeiList = item.product?.imeiList;
+      const hasImei = item.product?.imeiTracking && Array.isArray(imeiList) && imeiList.length > 0;
+      const itemNameContent = hasImei
+        ? {
+            stack: [
+              { text: itemName, fontSize: 9, bold: true },
+              { text: `IMEI: ${imeiList.join(', ')}`, fontSize: 7, color: '#64748B', margin: [0, 2, 0, 0] },
+            ],
+            fillColor: rowBg,
+          }
+        : { text: itemName, fillColor: rowBg, fontSize: 9, bold: true };
 
       tableBody.push([
         { text: String(index + 1), alignment: 'center', fillColor: rowBg, fontSize: 9 },
-        { text: `${itemName}${sku}`, fillColor: rowBg, fontSize: 9, bold: true },
+        itemNameContent,
         { text: String(item.quantity || 1), alignment: 'center', fillColor: rowBg, fontSize: 9 },
         { text: formatINR(item.sellingPrice), alignment: 'right', fillColor: rowBg, fontSize: 9 },
         {
@@ -100,49 +125,62 @@ const generateBillPdfStream = (bill, settings = {}) => {
     pageSize: 'A4',
     pageMargins: [36, 36, 36, 40],
     content: [
-      // Top Header Row with Short Name TM Logo & Design
+      // Top Header Row with Luxury TM Logo & Unique Branding
       {
         columns: [
-          // Left: Short Name TM Logo Emblem & Design
+          // Left: TM Logo & Store Branding
           {
             width: '*',
             stack: [
               {
                 columns: [
-                  // Stylish TM Logo Badge
-                  {
-                    width: 44,
-                    table: {
-                      widths: [44],
-                      heights: [38],
-                      body: [
-                        [
-                          {
-                            text: 'TM',
-                            fillColor: '#4F46E5',
-                            color: '#FFFFFF',
-                            fontSize: 20,
-                            bold: true,
-                            alignment: 'center',
-                            margin: [0, 6, 0, 0],
-                          },
-                        ],
-                      ],
-                    },
-                    layout: 'noBorders',
-                  },
-                  // Brand Name text next to badge: TM Mobiles
+                  // Metallic TM Logo Image
+                  tmLogoBase64
+                    ? {
+                        width: 52,
+                        image: tmLogoBase64,
+                        fit: [52, 52],
+                      }
+                    : {
+                        width: 48,
+                        table: {
+                          widths: [44],
+                          heights: [40],
+                          body: [
+                            [
+                              {
+                                text: 'TM',
+                                color: '#D97706',
+                                fontSize: 18,
+                                bold: true,
+                                alignment: 'center',
+                                margin: [0, 6, 0, 0],
+                                fillColor: '#0F172A',
+                              },
+                            ],
+                          ],
+                        },
+                        layout: 'noBorders',
+                      },
+                  // Brand Name text next to badge: TM MOBILES in unique luxury color
                   {
                     width: '*',
-                    margin: [10, 0, 0, 0],
+                    margin: [10, 2, 0, 0],
                     stack: [
-                      { text: 'TM MOBILES', fontSize: 18, bold: true, color: '#4F46E5', letterSpacing: 1 },
                       {
-                        text: 'ALL BRAND MOBILES AVAILABLE IN ONE PLACE',
-                        fontSize: 7.5,
+                        text: [
+                          { text: 'TM ', color: '#D97706', fontSize: 18, bold: true },
+                          { text: 'MOBILES', color: '#0F172A', fontSize: 18, bold: true },
+                        ],
+                        letterSpacing: 1,
+                      },
+                      {
+                        text: 'ALL BRAND MOBILES & ACCESSORIES WHOLESALE',
+                        fontSize: 7.2,
                         bold: true,
-                        color: '#0EA5E9',
+                        color: '#B45309',
                         margin: [0, 2, 0, 0],
+                        letterSpacing: 0.3,
                       },
                     ],
                   },
@@ -168,7 +206,7 @@ const generateBillPdfStream = (bill, settings = {}) => {
             width: 180,
             alignment: 'right',
             stack: [
-              { text: 'INVOICE', fontSize: 20, bold: true, color: '#4F46E5', margin: [0, 0, 0, 6] },
+              { text: 'INVOICE', fontSize: 20, bold: true, color: '#D97706', margin: [0, 0, 0, 6] },
               {
                 text: [
                   { text: 'Bill No: ', bold: true, color: '#475569', fontSize: 9 },
@@ -190,8 +228,9 @@ const generateBillPdfStream = (bill, settings = {}) => {
       // Accent Divider bar
       {
         canvas: [
-          { type: 'rect', x: 0, y: 8, w: 523, h: 3, color: '#4F46E5' },
-          { type: 'rect', x: 0, y: 12, w: 523, h: 1, color: '#0EA5E9' },
+          { type: 'rect', x: 0, y: 8, w: 320, h: 3, color: '#D97706' },
+          { type: 'rect', x: 320, y: 8, w: 203, h: 3, color: '#0F172A' },
+          { type: 'rect', x: 0, y: 12, w: 523, h: 1, color: '#E2E8F0' },
         ],
         margin: [0, 5, 0, 14],
       },
@@ -503,7 +542,7 @@ const generateCustomerStatementPdfStream = (statement, settings = {}) => {
     pageSize: 'A4',
     pageMargins: [36, 36, 36, 40],
     content: [
-      // Top Header
+      // Top Header with Stylish TM Logo & Branding
       {
         columns: [
           {
@@ -511,33 +550,46 @@ const generateCustomerStatementPdfStream = (statement, settings = {}) => {
             stack: [
               {
                 columns: [
-                  {
-                    width: 44,
-                    table: {
-                      widths: [44],
-                      heights: [38],
-                      body: [
-                        [
-                          {
-                            text: 'TM',
-                            fillColor: '#4F46E5',
-                            color: '#FFFFFF',
-                            fontSize: 20,
-                            bold: true,
-                            alignment: 'center',
-                            margin: [0, 6, 0, 0],
-                          },
-                        ],
-                      ],
-                    },
-                    layout: 'noBorders',
-                  },
+                  // Metallic TM Logo Image
+                  tmLogoBase64
+                    ? {
+                        width: 52,
+                        image: tmLogoBase64,
+                        fit: [52, 52],
+                      }
+                    : {
+                        width: 48,
+                        table: {
+                          widths: [44],
+                          heights: [40],
+                          body: [
+                            [
+                              {
+                                text: 'TM',
+                                color: '#D97706',
+                                fontSize: 18,
+                                bold: true,
+                                alignment: 'center',
+                                margin: [0, 6, 0, 0],
+                                fillColor: '#0F172A',
+                              },
+                            ],
+                          ],
+                        },
+                        layout: 'noBorders',
+                      },
                   {
                     width: '*',
-                    margin: [10, 0, 0, 0],
+                    margin: [10, 2, 0, 0],
                     stack: [
-                      { text: 'TM MOBILES', fontSize: 18, bold: true, color: '#4F46E5', letterSpacing: 1 },
-                      { text: 'ACCOUNT & BILL STATEMENT', fontSize: 10, bold: true, color: '#0EA5E9', margin: [0, 2, 0, 0] },
+                      {
+                        text: [
+                          { text: 'TM ', color: '#D97706', fontSize: 18, bold: true },
+                          { text: 'MOBILES', color: '#0F172A', fontSize: 18, bold: true },
+                        ],
+                        letterSpacing: 1,
+                      },
+                      { text: 'ACCOUNT & BILL STATEMENT', fontSize: 9.5, bold: true, color: '#B45309', margin: [0, 2, 0, 0] },
                     ],
                   },
                 ],
@@ -558,10 +610,10 @@ const generateCustomerStatementPdfStream = (statement, settings = {}) => {
         margin: [0, 0, 0, 16],
       },
 
-      // Customer Info & Period Banner
+      // Customer Info & Period Banner (Statement summary removed from top, kept only period info)
       {
         table: {
-          widths: ['*', 200],
+          widths: ['*', 190],
           body: [
             [
               {
@@ -585,12 +637,10 @@ const generateCustomerStatementPdfStream = (statement, settings = {}) => {
                     fontSize: 10,
                     bold: true,
                     color: '#312E81',
-                    margin: [0, 3, 0, 5],
+                    margin: [0, 3, 0, 6],
                   },
-                  { text: `Opening Balance: ${formatINR(statement.openingBalance)}`, fontSize: 8.5, color: '#475569' },
-                  { text: `Total Invoiced: ${formatINR(statement.totalBilled)}`, fontSize: 8.5, bold: true, color: '#1E293B' },
-                  { text: `Total Payments: ${formatINR(statement.totalPaid)}`, fontSize: 8.5, bold: true, color: '#059669' },
-                  { text: `Net Balance: ${formatINR(statement.closingBalance)}`, fontSize: 9.5, bold: true, color: statement.closingBalance > 0 ? '#DC2626' : '#059669', margin: [0, 2, 0, 0] },
+                  { text: `Total Invoices: ${bills.length}`, fontSize: 8.5, color: '#475569' },
+                  { text: `Total Payments: ${payments.length}`, fontSize: 8.5, color: '#475569' },
                 ],
               },
             ],
@@ -632,42 +682,76 @@ const generateCustomerStatementPdfStream = (statement, settings = {}) => {
         margin: [0, 0, 0, 20],
       },
 
-      // Bottom Financial Summary Box & Signatory
+      // Bottom Financial Summary Box (Left Bottom Corner) & Signatory
       {
         columns: [
+          // Left Bottom Corner: STATEMENT SUMMARY ONLY
           {
-            width: '*',
+            width: 270,
             table: {
               widths: ['*'],
               body: [
                 [
                   {
                     fillColor: '#F8FAFC',
+                    borderColor: ['#CBD5E1', '#CBD5E1', '#CBD5E1', '#CBD5E1'],
                     margin: [10, 10, 10, 10],
                     stack: [
-                      { text: 'STATEMENT SUMMARY', fontSize: 9, bold: true, color: '#1E293B', margin: [0, 0, 0, 4] },
-                      { text: `Prior Opening Balance: ${formatINR(statement.openingBalance)}`, fontSize: 8.5, color: '#475569' },
-                      { text: `+ New Bills Invoiced: ${formatINR(statement.totalBilled)}`, fontSize: 8.5, color: '#475569' },
-                      { text: `- Total Payments Received: ${formatINR(statement.totalPaid)}`, fontSize: 8.5, color: '#059669', bold: true },
+                      { text: 'STATEMENT SUMMARY', fontSize: 9.5, bold: true, color: '#1E293B', margin: [0, 0, 0, 6] },
                       {
-                        text: `= Net Outstanding Balance: ${formatINR(statement.closingBalance)}`,
-                        fontSize: 10.5,
-                        bold: true,
-                        color: statement.closingBalance > 0 ? '#DC2626' : '#059669',
-                        margin: [0, 4, 0, 0],
+                        columns: [
+                          { text: 'Total Invoice Bill Amount:', fontSize: 8.5, color: '#475569' },
+                          { text: formatINR(statement.totalBilled), fontSize: 8.5, bold: true, color: '#0F172A', alignment: 'right' },
+                        ],
+                        margin: [0, 0, 0, 3],
+                      },
+                      {
+                        columns: [
+                          { text: 'Total Payments:', fontSize: 8.5, color: '#475569' },
+                          { text: `- ${formatINR(statement.totalPaid)}`, fontSize: 8.5, bold: true, color: '#059669', alignment: 'right' },
+                        ],
+                        margin: [0, 0, 0, 4],
+                      },
+                      {
+                        canvas: [
+                          { type: 'line', x1: 0, y1: 2, x2: 240, y2: 2, lineWidth: 0.5, lineColor: '#CBD5E1' },
+                        ],
+                        margin: [0, 2, 0, 4],
+                      },
+                      {
+                        columns: [
+                          { text: 'Closing Balance (Outstanding):', fontSize: 9, bold: true, color: '#1E293B' },
+                          {
+                            text: formatINR(statement.closingBalance),
+                            fontSize: 10.5,
+                            bold: true,
+                            color: statement.closingBalance > 0 ? '#DC2626' : '#059669',
+                            alignment: 'right',
+                          },
+                        ],
+                        margin: [0, 2, 0, 0],
                       },
                     ],
                   },
                 ],
               ],
             },
-            layout: 'noBorders',
+            layout: {
+              hLineWidth: () => 0.5,
+              vLineWidth: () => 0.5,
+              hLineColor: () => '#E2E8F0',
+              vLineColor: () => '#E2E8F0',
+            },
           },
           {
-            width: 180,
+            width: '*',
+            text: '',
+          },
+          {
+            width: 170,
             alignment: 'center',
             stack: [
-              { text: 'For TM Mobiles', fontSize: 9, bold: true, color: '#1E293B', margin: [0, 20, 0, 30] },
+              { text: 'For TM Mobiles', fontSize: 9, bold: true, color: '#1E293B', margin: [0, 25, 0, 30] },
               { text: '(Authorized Signatory)', fontSize: 8, color: '#64748B' },
             ],
           },

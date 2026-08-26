@@ -51,26 +51,27 @@
     }
 
     .spinner {
-      width: 70px;
-      height: 70px;
+      width: 80px;
+      height: 80px;
       border: 3px solid rgba(124, 77, 255, 0.1);
       border-radius: 50%;
       border-top-color: var(--primary-color);
       border-bottom-color: var(--secondary-color);
       animation: spin 1.5s cubic-bezier(0.53, 0.21, 0.29, 0.67) infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    .logo-text {
+    .logo-img {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      font-weight: 800;
-      font-size: 16px;
-      letter-spacing: 1px;
-      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      width: 52px;
+      height: 52px;
+      border-radius: 10px;
+      object-fit: contain;
     }
 
     h1 {
@@ -136,7 +137,7 @@
   <div class="container">
     <div class="logo-container">
       <div class="spinner"></div>
-      <div class="logo-text">TMW</div>
+      <img class="logo-img" src="app_logo.png" alt="TMW Logo" />
     </div>
     <h1>TMW</h1>
     <div class="app-title">Wholesale Management System</div>

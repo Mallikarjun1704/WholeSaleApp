@@ -69,13 +69,18 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box sx={{
-            px: 1.2, py: 0.4, borderRadius: '8px',
-            bgcolor: 'primary.main', color: '#fff', fontWeight: 900, fontSize: '1rem',
-            letterSpacing: 1
-          }}>
-            TM
-          </Box>
+          <Box
+            component="img"
+            src="/tm_logo.png"
+            alt="TM Logo"
+            sx={{
+              width: 38,
+              height: 38,
+              borderRadius: '8px',
+              objectFit: 'contain',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            }}
+          />
           <Box>
             <Typography variant="h6" fontWeight={800}>Bill Details: #{bill.billNumber}</Typography>
             <Typography variant="caption" color="text.secondary">Date: {new Date(bill.billDate || bill.createdAt).toLocaleDateString('en-IN')}</Typography>
@@ -466,10 +471,10 @@ const CustomerPaymentHistoryDialog = ({ open, onClose, customer }) => {
   const { data: billsData, isLoading } = useGetBillsByCustomerQuery(customer._id, { skip: !open });
   const bills = billsData?.data || [];
 
-  // Extract all date-wise payment log entries across all bills for this customer
+  // Extract all active date-wise payment log entries across bills for this customer
   const paymentLogs = [];
   bills.forEach((bill) => {
-    if (bill.payments && Array.isArray(bill.payments)) {
+    if ((bill.paidAmount || 0) > 0 && bill.payments && Array.isArray(bill.payments)) {
       bill.payments.forEach((p) => {
         paymentLogs.push({
           ...p,
@@ -634,30 +639,24 @@ const CustomerStatementDialog = ({ open, onClose, customer }) => {
           </Grid>
         </Paper>
 
-        {/* Statement KPI Cards */}
+        {/* Statement KPI Cards (3 Cards: Total Invoice Bill Amount, Total Payments, Closing Balance) */}
         <Grid container spacing={2} sx={{ mb: 2.5 }}>
-          <Grid item xs={6} sm={3}>
-            <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center', bgcolor: (theme) => alpha(theme.palette.text.secondary, 0.05) }}>
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>OPENING BALANCE</Typography>
-              <Typography variant="h6" fontWeight={800}>{formatCurrency(openingBalance)}</Typography>
+          <Grid item xs={12} sm={4}>
+            <Card variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: (theme) => alpha(theme.palette.info.main, 0.08), borderColor: 'info.light' }}>
+              <Typography variant="caption" color="info.main" fontWeight={700} letterSpacing={0.5}>TOTAL INVOICE BILL AMOUNT</Typography>
+              <Typography variant="h5" fontWeight={800} color="info.main" sx={{ mt: 0.5 }}>{formatCurrency(totalBilled)}</Typography>
             </Card>
           </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center', bgcolor: (theme) => alpha(theme.palette.info.main, 0.08), borderColor: 'info.light' }}>
-              <Typography variant="caption" color="info.main" fontWeight={600}>TOTAL INVOICED</Typography>
-              <Typography variant="h6" fontWeight={800} color="info.main">{formatCurrency(totalBilled)}</Typography>
+          <Grid item xs={12} sm={4}>
+            <Card variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: (theme) => alpha(theme.palette.success.main, 0.08), borderColor: 'success.light' }}>
+              <Typography variant="caption" color="success.main" fontWeight={700} letterSpacing={0.5}>TOTAL PAYMENTS</Typography>
+              <Typography variant="h5" fontWeight={800} color="success.main" sx={{ mt: 0.5 }}>{formatCurrency(totalPaid)}</Typography>
             </Card>
           </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center', bgcolor: (theme) => alpha(theme.palette.success.main, 0.08), borderColor: 'success.light' }}>
-              <Typography variant="caption" color="success.main" fontWeight={600}>TOTAL PAYMENTS</Typography>
-              <Typography variant="h6" fontWeight={800} color="success.main">{formatCurrency(totalPaid)}</Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center', bgcolor: (theme) => closingBalance > 0 ? alpha(theme.palette.error.main, 0.08) : alpha(theme.palette.success.main, 0.08), borderColor: closingBalance > 0 ? 'error.light' : 'success.light' }}>
-              <Typography variant="caption" color={closingBalance > 0 ? 'error.main' : 'success.main'} fontWeight={600}>NET OUTSTANDING</Typography>
-              <Typography variant="h6" fontWeight={800} color={closingBalance > 0 ? 'error.main' : 'success.main'}>{formatCurrency(closingBalance)}</Typography>
+          <Grid item xs={12} sm={4}>
+            <Card variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: (theme) => closingBalance > 0 ? alpha(theme.palette.error.main, 0.08) : alpha(theme.palette.success.main, 0.08), borderColor: closingBalance > 0 ? 'error.light' : 'success.light' }}>
+              <Typography variant="caption" color={closingBalance > 0 ? 'error.main' : 'success.main'} fontWeight={700} letterSpacing={0.5}>CLOSING BALANCE (OUTSTANDING)</Typography>
+              <Typography variant="h5" fontWeight={800} color={closingBalance > 0 ? 'error.main' : 'success.main'} sx={{ mt: 0.5 }}>{formatCurrency(closingBalance)}</Typography>
             </Card>
           </Grid>
         </Grid>

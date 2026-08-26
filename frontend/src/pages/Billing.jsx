@@ -53,18 +53,20 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box sx={{
-            width: 48, height: 48, borderRadius: '14px',
-            background: 'linear-gradient(135deg, #6366F1 0%, #0EA5E9 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontWeight: 900, fontSize: '1.4rem', letterSpacing: 1,
-            boxShadow: '0 6px 16px rgba(99, 102, 241, 0.4)',
-            border: '2px solid rgba(255, 255, 255, 0.3)',
-          }}>
-            TMW
-          </Box>
+          <Box
+            component="img"
+            src="/app_logo.png"
+            alt="TMW Logo"
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: '10px',
+              objectFit: 'contain',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            }}
+          />
           <Box>
-            <Typography variant="h6" fontWeight={900} sx={{ background: 'linear-gradient(135deg, #6366F1, #0EA5E9)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>TMW</Typography>
+            <Typography variant="h6" fontWeight={900} sx={{ background: 'linear-gradient(135deg, #1E40AF, #0284C7)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>TMW</Typography>
             <Typography variant="caption" color="text.secondary" fontWeight={700}>Wholesale Bill #{bill.billNumber}</Typography>
           </Box>
         </Box>

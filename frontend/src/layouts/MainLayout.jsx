@@ -128,43 +128,42 @@ const MainLayout = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: sidebarOpen ? 'flex-start' : 'center',
-            px: sidebarOpen ? 2.5 : 0,
-            py: 2,
+            px: sidebarOpen ? 2 : 0,
+            py: 1.5,
             minHeight: 64,
             gap: 1.5,
           }}
         >
           <Box
+            component="img"
+            src="/app_logo.png"
+            alt="TMW Logo"
             sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #6366F1 0%, #0EA5E9 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              width: 42,
+              height: 42,
+              borderRadius: '10px',
+              objectFit: 'contain',
               flexShrink: 0,
+              bgcolor: '#fff',
+              p: 0.3,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
             }}
-          >
-            <PhoneIcon sx={{ fontSize: 22, color: '#fff' }} />
-          </Box>
+          />
           {sidebarOpen && (
             <Box>
               <Typography
                 variant="subtitle1"
                 fontWeight={800}
                 sx={{
-                  background: 'linear-gradient(135deg, #6366F1, #0EA5E9)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  color: 'transparent',
-                  lineHeight: 1.2,
+                  color: 'primary.main',
+                  letterSpacing: 0.8,
+                  lineHeight: 1.1,
                 }}
               >
                 TMW
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                Wholesale Mobile Store
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem', fontWeight: 600 }}>
+                Mobile Wholesale
               </Typography>
             </Box>
           )}
