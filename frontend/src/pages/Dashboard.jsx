@@ -193,6 +193,10 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
     0
   );
 
+  const isLossType = ['totalLoss', 'todayLoss', 'monthlyLoss'].includes(detailType);
+  const totalLossAmount = isLossType ? items.reduce((sum, item) => sum + (Number(item.totalLoss) || 0), 0) : 0;
+  const totalLossQty = isLossType ? items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) : 0;
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -210,6 +214,19 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
               />
               <Typography variant="caption" color="text.secondary" fontWeight={600}>
                 Total Quantity: <strong>{totalStockQty} Units</strong>
+              </Typography>
+            </Stack>
+          )}
+          {isLossType && items.length > 0 && (
+            <Stack direction="row" spacing={2} sx={{ mt: 0.5 }} alignItems="center">
+              <Chip
+                label={`Total Loss: ${formatCurrency(totalLossAmount)}`}
+                color="error"
+                size="small"
+                sx={{ fontWeight: 700 }}
+              />
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                Total Loss Qty: <strong>{totalLossQty} Units</strong>
               </Typography>
             </Stack>
           )}
@@ -248,6 +265,16 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
                       <TableCell align="center" sx={{ fontWeight: 700 }}>Stock Qty</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700 }}>Purchase Price</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700 }}>Total Purchase Amount</TableCell>
+                    </>
+                  )}
+                  {isLossType && (
+                    <>
+                      <TableCell sx={{ fontWeight: 700 }}>Product ID</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Product Name</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Purchase Price</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Sale Price</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>Loss Qty</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Total Loss</TableCell>
                     </>
                   )}
                   {(detailType === 'totalProducts' || detailType === 'totalQuantitySold') && (
@@ -293,6 +320,33 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
                         </TableCell>
                       </>
                     )}
+                    {isLossType && (
+                      <>
+                        <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                          <Chip
+                            label={row.productId || row.sku || '-'}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontWeight: 700, fontSize: '0.75rem' }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <strong>{row.name || 'Unknown Product'}</strong>
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>
+                          {formatCurrency(row.purchasePrice || 0)}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                          {formatCurrency(row.salePrice || 0)}
+                        </TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 700 }}>
+                          {row.quantity}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 800, color: 'error.main' }}>
+                          {formatCurrency(row.totalLoss || 0)}
+                        </TableCell>
+                      </>
+                    )}
                     {(detailType === 'totalProducts' || detailType === 'totalQuantitySold') && (
                       <>
                         <TableCell><strong>{row.name || 'Unknown Product'}</strong></TableCell>
@@ -321,6 +375,17 @@ const DashboardDetailModal = ({ open, onClose, detailType, title }) => {
                     <TableCell align="right">-</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 800, color: 'primary.main' }}>
                       {formatCurrency(totalPurchaseAmount)}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {isLossType && items.length > 0 && (
+                  <TableRow sx={{ bgcolor: 'action.hover', borderTop: '2px solid', borderColor: 'divider' }}>
+                    <TableCell colSpan={2}><strong>Total</strong></TableCell>
+                    <TableCell align="right">-</TableCell>
+                    <TableCell align="right">-</TableCell>
+                    <TableCell align="center"><strong>{totalLossQty}</strong></TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 900, color: 'error.main' }}>
+                      {formatCurrency(totalLossAmount)}
                     </TableCell>
                   </TableRow>
                 )}
@@ -471,7 +536,14 @@ const Dashboard = () => {
     },
     { title: 'Total Sales', value: formatCurrency(stats.totalSales), icon: <SalesIcon />, color: '#0EA5E9' },
     { title: 'Total Profit', value: formatCurrency(stats.totalProfit), icon: <ProfitIcon />, color: '#10B981' },
-    { title: 'Total Loss', value: formatCurrency(stats.totalLoss), icon: <LossIcon />, color: '#EF4444' },
+    {
+      title: 'Total Loss',
+      value: formatCurrency(stats.totalLoss),
+      icon: <LossIcon />,
+      color: '#EF4444',
+      detailType: 'totalLoss',
+      modalTitle: 'Total Loss Breakdown by Product',
+    },
     { title: 'Total Purchase', value: formatCurrency(stats.totalPurchase), icon: <PurchaseIcon />, color: '#F59E0B' },
     {
       title: 'Low Stock Items',
@@ -484,14 +556,28 @@ const Dashboard = () => {
     { title: 'Total Commission', value: formatCurrency(stats.totalCommission), icon: <CommissionIcon />, color: '#10B981' },
     { title: 'Total Travel Charge', value: formatCurrency(stats.totalTravelCharge), icon: <TravelIcon />, color: '#F59E0B' },
     { title: 'Monthly Profit', value: formatCurrency(stats.monthlyProfit), icon: <MonthlyProfitIcon />, color: '#10B981' },
-    { title: 'Monthly Loss', value: formatCurrency(stats.monthlyLoss), icon: <LossIcon />, color: '#EF4444' },
+    {
+      title: 'Monthly Loss',
+      value: formatCurrency(stats.monthlyLoss),
+      icon: <LossIcon />,
+      color: '#EF4444',
+      detailType: 'monthlyLoss',
+      modalTitle: 'Monthly Loss Breakdown by Product',
+    },
     { title: 'Monthly Sales', value: formatCurrency(stats.monthlySales), icon: <MonthlyIcon />, color: '#0EA5E9' },
     { title: 'Monthly Purchase', value: formatCurrency(stats.monthlyPurchase), icon: <PurchaseIcon />, color: '#8B5CF6' },
     { title: 'Current Month Volume', value: stats.monthlyVolume || 0, icon: <CategoryIcon />, color: '#EC4899' },
     { title: 'Current Month Commission', value: formatCurrency(stats.monthlyCommission), icon: <CommissionIcon />, color: '#0EA5E9' },
     { title: 'Current Month Travel Charge', value: formatCurrency(stats.monthlyTravelCharge), icon: <TravelIcon />, color: '#6366F1' },
     { title: "Today's Profit", value: formatCurrency(stats.todayProfit), icon: <ProfitIcon />, color: '#10B981' },
-    { title: "Today's Loss", value: formatCurrency(stats.todayLoss), icon: <LossIcon />, color: '#EF4444' },
+    {
+      title: "Today's Loss",
+      value: formatCurrency(stats.todayLoss),
+      icon: <LossIcon />,
+      color: '#EF4444',
+      detailType: 'todayLoss',
+      modalTitle: "Today's Loss Breakdown by Product",
+    },
   ];
 
   return (

@@ -14,12 +14,9 @@ const isSameDay = (d1, d2) => {
   const date1 = new Date(d1);
   const date2 = new Date(d2);
   return (
-    (date1.getFullYear() === date2.getFullYear() &&
-     date1.getMonth() === date2.getMonth() &&
-     date1.getDate() === date2.getDate()) ||
-    (date1.getUTCFullYear() === date2.getUTCFullYear() &&
-     date1.getUTCMonth() === date2.getUTCMonth() &&
-     date1.getUTCDate() === date2.getUTCDate())
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
   );
 };
 
@@ -27,8 +24,8 @@ const isSameMonth = (d, now) => {
   if (!d || !now) return false;
   const date = new Date(d);
   return (
-    (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()) ||
-    (date.getUTCFullYear() === now.getUTCFullYear() && date.getUTCMonth() === now.getUTCMonth())
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth()
   );
 };
 
@@ -57,11 +54,11 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   const allPurchases = await Purchase.find();
 
   // 3. Today's Sales & Bills (Non-cancelled bills dated today)
-  const todayBills = allBills.filter((b) => isSameDay(b.billDate, now) || isSameDay(b.createdAt, now));
+  const todayBills = allBills.filter((b) => isSameDay(b.billDate || b.createdAt, now));
   const todaySales = todayBills.reduce((sum, bill) => sum + (bill.finalAmount || 0), 0);
 
   // 4. Today's Purchase (All purchase bills dated today)
-  const todayPurchases = allPurchases.filter((p) => isSameDay(p.purchaseDate, now) || isSameDay(p.createdAt, now));
+  const todayPurchases = allPurchases.filter((p) => isSameDay(p.purchaseDate || p.createdAt, now));
   const todayPurchase = todayPurchases.reduce((sum, purchase) => sum + (purchase.totalAmount || 0), 0);
 
   // 5. Today's Profit & Loss (item-level loss: when sellingPrice < purchasePrice)
@@ -106,7 +103,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   const todayBillsCount = todayBills.length;
 
   // 10. Monthly Sales & Profit & Purchase & Volume (current month)
-  const monthlyBills = allBills.filter((b) => isSameMonth(b.billDate, now) || isSameMonth(b.createdAt, now));
+  const monthlyBills = allBills.filter((b) => isSameMonth(b.billDate || b.createdAt, now));
   const monthlySales = monthlyBills.reduce((sum, bill) => sum + (bill.finalAmount || 0), 0);
 
   let monthlyProfit = 0;
@@ -124,7 +121,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     monthlyProfit += (bill.discount || 0);
   }
 
-  const monthlyPurchasesList = allPurchases.filter((p) => isSameMonth(p.purchaseDate, now) || isSameMonth(p.createdAt, now));
+  const monthlyPurchasesList = allPurchases.filter((p) => isSameMonth(p.purchaseDate || p.createdAt, now));
   const monthlyPurchase = monthlyPurchasesList.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
 
   const monthlyVolume = monthlyBills.reduce((sum, b) => {
@@ -514,6 +511,72 @@ const getDashboardDetails = asyncHandler(async (req, res) => {
         $expr: { $and: [{ $gt: ['$stock', 0] }, { $lte: ['$stock', '$lowStockThreshold'] }] },
       }).sort({ stock: 1 });
       break;
+
+    case 'totalLoss':
+    case 'todayLoss':
+    case 'monthlyLoss': {
+      const nowLoss = new Date();
+      let lossBills = await Bill.find({ status: { $ne: 'Cancelled' } })
+        .populate('items.product', 'sku name modelNumber');
+
+      if (type === 'todayLoss') {
+        lossBills = lossBills.filter((b) => isSameDay(b.billDate || b.createdAt, nowLoss));
+      } else if (type === 'monthlyLoss') {
+        lossBills = lossBills.filter((b) => isSameMonth(b.billDate || b.createdAt, nowLoss));
+      }
+
+      const lossMap = {};
+
+      for (const bill of lossBills) {
+        for (const item of bill.items) {
+          const costOfGoods = (item.purchasePrice || 0) * (item.quantity || 0);
+          const itemProfit = (item.taxableAmount || 0) - costOfGoods;
+
+          if (itemProfit < 0) {
+            const lossAmt = Math.abs(itemProfit);
+            const prodObj = item.product;
+            const prodId = prodObj?._id ? prodObj._id.toString() : (item.product?.toString() || item.name || 'unknown');
+            const sku = prodObj?.sku || prodObj?.modelNumber || (prodObj?._id ? prodObj._id.toString().slice(-6).toUpperCase() : 'N/A');
+            const name = item.name || prodObj?.name || 'Unknown Product';
+
+            if (!lossMap[prodId]) {
+              lossMap[prodId] = {
+                _id: prodId,
+                productId: sku,
+                sku: sku,
+                name: name,
+                quantity: 0,
+                totalCost: 0,
+                totalRevenue: 0,
+                totalLoss: 0,
+              };
+            }
+
+            lossMap[prodId].quantity += (item.quantity || 0);
+            lossMap[prodId].totalCost += costOfGoods;
+            lossMap[prodId].totalRevenue += (item.taxableAmount || 0);
+            lossMap[prodId].totalLoss += lossAmt;
+          }
+        }
+      }
+
+      details = Object.values(lossMap)
+        .map((p) => {
+          const qty = p.quantity || 1;
+          return {
+            _id: p._id,
+            productId: p.productId,
+            sku: p.sku,
+            name: p.name,
+            quantity: p.quantity,
+            purchasePrice: Math.round(p.totalCost / qty),
+            salePrice: Math.round(p.totalRevenue / qty),
+            totalLoss: Math.round(p.totalLoss),
+          };
+        })
+        .sort((a, b) => b.totalLoss - a.totalLoss);
+      break;
+    }
 
     default:
       return res.status(400).json({ success: false, message: 'Invalid detail type requested' });
