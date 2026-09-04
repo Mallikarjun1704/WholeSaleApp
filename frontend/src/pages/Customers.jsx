@@ -62,7 +62,10 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
   const subtotal = Number(bill.subtotal) || 0;
   const gstAmount = Number(bill.gstAmount) || 0;
   const packingCharges = Number(bill.discount) || 0;
-  const grandTotal = customerOutstanding + subtotal + gstAmount + packingCharges;
+  const currentBillAmount = Number(bill.finalAmount) > 0
+    ? Number(bill.finalAmount)
+    : (subtotal + gstAmount + packingCharges);
+  const grandTotal = customerOutstanding + currentBillAmount;
   const items = Array.isArray(bill.items) ? bill.items : [];
 
   return (

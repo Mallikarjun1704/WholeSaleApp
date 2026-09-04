@@ -112,14 +112,17 @@ const generateBillPdfStream = (bill, settings = {}) => {
     });
   }
 
-  // Calculate Totals: Old Outstanding Amount + Current Bill Amount (Subtotal) + GST + Package charge (Packing Charges) = Grand Total
+  // Calculate Totals: Old Outstanding Amount + Current Bill Amount (Subtotal + GST + Packing Charges) = Grand Total
   const outstandingAmount = typeof bill.outstandingAmount === 'number'
     ? bill.outstandingAmount
-    : (Number(bill.customer?.pendingCredit) || 0);
+    : 0;
   const subtotal = Number(bill.subtotal) || 0;
   const gstAmount = Number(bill.gstAmount) || 0;
   const packingCharges = Number(bill.discount) || 0;
-  const grandTotal = outstandingAmount + subtotal + gstAmount + packingCharges;
+  const currentBillTotal = Number(bill.finalAmount) > 0
+    ? Number(bill.finalAmount)
+    : (subtotal + gstAmount + packingCharges);
+  const grandTotal = outstandingAmount + currentBillTotal;
 
   const docDefinition = {
     pageSize: 'A4',

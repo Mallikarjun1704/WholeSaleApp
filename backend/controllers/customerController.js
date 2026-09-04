@@ -2,6 +2,7 @@ const Customer = require('../models/Customer');
 const Bill = require('../models/Bill');
 const ActivityLog = require('../models/ActivityLog');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { attachOutstandingToBills } = require('./billingController');
 
 /**
  * @desc    Get all customers (retail stores)
@@ -60,11 +61,13 @@ const getCustomerById = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .populate('items.product', 'name sku');
 
+  const processedBills = await attachOutstandingToBills(bills, customer._id);
+
   res.status(200).json({
     success: true,
     data: {
       customer,
-      bills,
+      bills: processedBills,
     },
   });
 });

@@ -198,6 +198,67 @@ const createBill = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Helper to compute the accurate Old Outstanding Amount for a bill
+ * based on all prior unpaid bills of that customer in chronological sequence.
+ */
+const attachOutstandingToBills = async (bills, customerId) => {
+  if (!bills || bills.length === 0) return bills;
+
+  const custId = customerId || bills[0]?.customer?._id || bills[0]?.customer;
+  if (!custId) return bills;
+
+  const allCustomerBills = await Bill.find({
+    customer: custId,
+    status: { $ne: 'Cancelled' },
+  }).sort({ billDate: 1, createdAt: 1, _id: 1 });
+
+  const billOutstandingMap = new Map();
+  for (let i = 0; i < allCustomerBills.length; i++) {
+    const curBill = allCustomerBills[i];
+    const priorBills = allCustomerBills.slice(0, i);
+    const priorOutstanding = priorBills.reduce((sum, prev) => {
+      const unpaid = Math.max(0, (prev.finalAmount || 0) - (prev.paidAmount || 0));
+      return sum + unpaid;
+    }, 0);
+    billOutstandingMap.set(curBill._id.toString(), priorOutstanding);
+  }
+
+  return bills.map((b) => {
+    const bObj = b.toObject ? b.toObject() : { ...b };
+    const calculatedOutstanding = billOutstandingMap.get(bObj._id.toString());
+    if (typeof calculatedOutstanding === 'number') {
+      bObj.outstandingAmount = calculatedOutstanding;
+    }
+    return bObj;
+  });
+};
+
+const computeSingleBillOutstanding = async (bill) => {
+  if (!bill || !bill.customer) return bill?.outstandingAmount || 0;
+  const custId = bill.customer._id || bill.customer;
+
+  const allCustomerBills = await Bill.find({
+    customer: custId,
+    status: { $ne: 'Cancelled' },
+  }).sort({ billDate: 1, createdAt: 1, _id: 1 });
+
+  const targetId = bill._id.toString();
+  const index = allCustomerBills.findIndex((b) => b._id.toString() === targetId);
+  if (index === -1) {
+    return allCustomerBills.reduce((sum, prev) => {
+      const unpaid = Math.max(0, (prev.finalAmount || 0) - (prev.paidAmount || 0));
+      return sum + unpaid;
+    }, 0);
+  }
+
+  const priorBills = allCustomerBills.slice(0, index);
+  return priorBills.reduce((sum, prev) => {
+    const unpaid = Math.max(0, (prev.finalAmount || 0) - (prev.paidAmount || 0));
+    return sum + unpaid;
+  }, 0);
+};
+
+/**
  * @desc    Get all bills
  * @route   GET /api/billing
  * @access  Private
@@ -218,9 +279,14 @@ const getBills = asyncHandler(async (req, res) => {
     .populate('customer', 'shopName ownerName phone pendingCredit')
     .populate('items.product', 'name sku');
 
+  let processedBills = bills;
+  if (customerId) {
+    processedBills = await attachOutstandingToBills(bills, customerId);
+  }
+
   res.status(200).json({
     success: true,
-    data: bills,
+    data: processedBills,
   });
 });
 
@@ -238,9 +304,12 @@ const getBillById = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Bill not found' });
   }
 
+  const billObj = bill.toObject ? bill.toObject() : { ...bill };
+  billObj.outstandingAmount = await computeSingleBillOutstanding(bill);
+
   res.status(200).json({
     success: true,
-    data: bill,
+    data: billObj,
   });
 });
 
@@ -258,9 +327,11 @@ const getBillsByCustomer = asyncHandler(async (req, res) => {
     .populate('customer', 'shopName ownerName phone pendingCredit')
     .populate('items.product', 'name sku');
 
+  const processedBills = await attachOutstandingToBills(bills, req.params.customerId);
+
   res.status(200).json({
     success: true,
-    data: bills,
+    data: processedBills,
   });
 });
 
@@ -462,21 +533,8 @@ const getBillPdf = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Bill not found' });
   }
 
-  // Use saved bill.outstandingAmount (which is the Old Outstanding Amount when the bill was created)
-  // If not saved (e.g. legacy bill), calculate old outstanding from customer's pending credit
-  if (typeof bill.outstandingAmount !== 'number') {
-    let custPending = 0;
-    if (bill.customer) {
-      if (typeof bill.customer.pendingCredit === 'number') {
-        custPending = bill.customer.pendingCredit;
-      } else {
-        const cust = await Customer.findById(bill.customer._id || bill.customer);
-        custPending = cust?.pendingCredit || 0;
-      }
-    }
-    const billUnpaid = Math.max(0, (bill.finalAmount || 0) - (bill.paidAmount || 0));
-    bill.outstandingAmount = Math.max(0, custPending - billUnpaid);
-  }
+  // Calculate accurate chronological old outstanding amount before this bill
+  bill.outstandingAmount = await computeSingleBillOutstanding(bill);
 
   // Format filename as shopName_date_indexValue.pdf
   const rawShopName = bill.customer?.shopName || bill.customer?.ownerName || bill.customer?.name || 'Customer';
@@ -693,4 +751,6 @@ module.exports = {
   updateBillPaymentStatus,
   updateBill,
   getBillPdf,
+  attachOutstandingToBills,
+  computeSingleBillOutstanding,
 };
