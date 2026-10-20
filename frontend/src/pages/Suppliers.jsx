@@ -1,19 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box, Typography, Card, Button, TextField, InputAdornment, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, Collapse, Skeleton, alpha, Divider, Grid, Stack, Alert, Autocomplete, Paper,
+  Select, MenuItem, FormControl, InputLabel, Tooltip,
 } from '@mui/material';
 import {
   Search as SearchIcon, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
   KeyboardArrowDown, KeyboardArrowUp, LocalShipping as SupplierIcon,
   Receipt as BillIcon, Close as CloseIcon, PhoneAndroid as PhoneIcon,
-  Visibility as ViewIcon, Refresh as RefreshIcon,
+  Visibility as ViewIcon, Refresh as RefreshIcon, Payment as PaymentIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { selectCurrentUser } from '../features/auth/authSlice';
-import { useGetSuppliersQuery, useCreateSupplierMutation, useUpdateSupplierMutation } from '../api/supplierApi';
-import { useGetPurchasesBySupplierQuery, useCreatePurchaseMutation, useUpdatePurchasePaymentMutation, useUpdatePurchaseMutation, useLazyGetNextInvoiceNumberQuery } from '../api/purchaseApi';
+import {
+  useGetSuppliersQuery,
+  useCreateSupplierMutation,
+  useUpdateSupplierMutation,
+  useRecordSupplierPaymentMutation,
+} from '../api/supplierApi';
+import {
+  useGetPurchasesBySupplierQuery,
+  useCreatePurchaseMutation,
+  useUpdatePurchasePaymentMutation,
+  useUpdatePurchaseMutation,
+  useLazyGetNextInvoiceNumberQuery,
+} from '../api/purchaseApi';
 import { useGetInventoryQuery, useCreateProductMutation } from '../api/inventoryApi';
 import { getLocalDateString } from '../utils/dateUtils';
 
@@ -638,23 +651,34 @@ const ViewPurchaseDialog = ({ open, onClose, purchase, isAdmin, onEdit }) => {
   );
 };
 
-// ========== Record Partial / Full Payment Dialog ==========
-const RecordPaymentDialog = ({ open, onClose, billNumber, totalAmount, paidAmount, onSave, isLoading }) => {
-  const remaining = Math.max(0, (totalAmount || 0) - (paidAmount || 0));
+// ========== Record Partial / Full Payment Dialog for Single Purchase Bill ==========
+const RecordPaymentDialog = ({ open, onClose, purchase, onSave, isLoading }) => {
+  const remaining = Math.max(0, (purchase?.totalAmount || 0) - (purchase?.paidAmount || 0));
   const [payAmount, setPayAmount] = useState(remaining);
+  const [paymentMethod, setPaymentMethod] = useState(purchase?.paymentMethod || 'Cash');
+  const [paymentDate, setPaymentDate] = useState(getLocalDateString());
+  const [note, setNote] = useState('');
 
   React.useEffect(() => {
-    setPayAmount(remaining);
-  }, [open, remaining]);
+    if (purchase) {
+      const rem = Math.max(0, (purchase?.totalAmount || 0) - (purchase?.paidAmount || 0));
+      setPayAmount(rem > 0 ? rem : purchase.totalAmount || 0);
+      setPaymentMethod(purchase?.paymentMethod || 'Cash');
+      setPaymentDate(getLocalDateString());
+      setNote('');
+    }
+  }, [open, purchase]);
+
+  if (!purchase) return null;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>Record Payment: #{billNumber}</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700 }}>Record Payment: #{purchase.invoiceNumber}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <Box sx={{ p: 1.5, bgcolor: 'grey.100', borderRadius: 1.5 }}>
-            <Typography variant="body2" color="text.secondary">Total Amount: <strong>{formatCurrency(totalAmount)}</strong></Typography>
-            <Typography variant="body2" color="text.secondary">Paid So Far: <strong>{formatCurrency(paidAmount)}</strong></Typography>
+          <Box sx={{ p: 1.5, bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'grey.100', borderRadius: 1.5 }}>
+            <Typography variant="body2" color="text.secondary">Total Amount: <strong>{formatCurrency(purchase.totalAmount)}</strong></Typography>
+            <Typography variant="body2" color="text.secondary">Paid So Far: <strong>{formatCurrency(purchase.paidAmount)}</strong></Typography>
             <Typography variant="subtitle2" color="error.main" fontWeight={800} sx={{ mt: 0.5 }}>
               Remaining to Pay: {formatCurrency(remaining)}
             </Typography>
@@ -668,13 +692,48 @@ const RecordPaymentDialog = ({ open, onClose, billNumber, totalAmount, paidAmoun
             size="small"
             inputProps={{ min: 1, max: remaining }}
           />
+          <Grid container spacing={1}>
+            <Grid item xs={6}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Payment Method</InputLabel>
+                <Select value={paymentMethod} label="Payment Method" onChange={(e) => setPaymentMethod(e.target.value)}>
+                  <MenuItem value="Cash">Cash</MenuItem>
+                  <MenuItem value="UPI">UPI</MenuItem>
+                  <MenuItem value="Card">Card</MenuItem>
+                  <MenuItem value="Net Banking">Net Banking</MenuItem>
+                  <MenuItem value="Cheque">Cheque</MenuItem>
+                  <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
+                  <MenuItem value="Other">Other</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                label="Payment Date *"
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+          </Grid>
+          <TextField
+            label="Notes / Remarks"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            fullWidth
+            size="small"
+            placeholder="Optional remarks or reference..."
+          />
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5 }}>
         <Button onClick={onClose}>Cancel</Button>
         <Button
           variant="contained"
-          onClick={() => onSave(Number(payAmount))}
+          onClick={() => onSave({ amount: Number(payAmount), paymentMethod, paymentDate, note })}
           disabled={isLoading || !payAmount || Number(payAmount) <= 0}
         >
           {isLoading ? 'Saving...' : 'Submit Payment'}
@@ -684,23 +743,388 @@ const RecordPaymentDialog = ({ open, onClose, billNumber, totalAmount, paidAmoun
   );
 };
 
-// ========== Supplier Row with Purchase Bills ==========
+// ========== Supplier Bulk Payment Dialog (FIFO Distribution) ==========
+const SupplierBulkPaymentDialog = ({ open, onClose, supplier }) => {
+  const { data: purchasesData, isLoading: isPurchasesLoading } = useGetPurchasesBySupplierQuery(supplier?._id, {
+    skip: !open || !supplier?._id,
+  });
+  const [recordPayment, { isLoading: isSubmitting }] = useRecordSupplierPaymentMutation();
+
+  const purchases = purchasesData?.data || [];
+  // Filter unpaid/partially paid purchases sorted by purchaseDate/createdAt ASC (FIFO)
+  const unpaidPurchases = purchases
+    .filter((p) => (p?.paymentStatus === 'Unpaid' || p?.paymentStatus === 'Partially Paid') && ((p?.totalAmount || 0) - (p?.paidAmount || 0)) > 0)
+    .sort((a, b) => new Date(a?.purchaseDate || a?.createdAt) - new Date(b?.purchaseDate || b?.createdAt));
+
+  const totalOwed = unpaidPurchases.reduce((sum, p) => sum + Math.max(0, (p?.totalAmount || 0) - (p?.paidAmount || 0)), 0);
+
+  const [payAmount, setPayAmount] = useState(totalOwed);
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentDate, setPaymentDate] = useState(getLocalDateString());
+  const [note, setNote] = useState('');
+
+  React.useEffect(() => {
+    setPayAmount(totalOwed);
+    setPaymentMethod('Cash');
+    setPaymentDate(getLocalDateString());
+    setNote('');
+  }, [open, totalOwed]);
+
+  // Calculate live allocation across purchase bills in FIFO order
+  let remainingInput = Number(payAmount) || 0;
+  const allocations = unpaidPurchases.map((p) => {
+    const owed = Math.max(0, (p?.totalAmount || 0) - (p?.paidAmount || 0));
+    const allocated = Math.min(owed, Math.max(0, remainingInput));
+    remainingInput -= allocated;
+    const newPaid = (p?.paidAmount || 0) + allocated;
+    const newStatus = newPaid >= (p?.totalAmount || 0) ? 'Paid' : newPaid > 0 ? 'Partially Paid' : (p?.paymentStatus || 'Unpaid');
+    return {
+      ...p,
+      owed,
+      allocated,
+      newPaid,
+      newStatus,
+    };
+  });
+
+  const handleSubmit = async () => {
+    if (!payAmount || Number(payAmount) <= 0) return;
+    try {
+      await recordPayment({
+        id: supplier._id,
+        amount: Number(payAmount),
+        paymentMethod,
+        paymentDate,
+        note,
+      }).unwrap();
+      onClose();
+    } catch (err) {
+      alert(err?.data?.message || 'Failed to record supplier payment');
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PaymentIcon color="primary" />
+          <Typography variant="h6" fontWeight={800}>
+            Record Payment - {supplier?.name}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2.5}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ p: 2, bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05), borderRadius: 2, border: '1px solid', borderColor: 'primary.light' }}>
+                <Typography variant="body2" color="text.secondary">Total Outstanding Balance / Amount</Typography>
+                <Typography variant="h5" fontWeight={800} color="error.main">{formatCurrency(totalOwed)}</Typography>
+                <Typography variant="caption" color="text.secondary">{unpaidPurchases.length} unpaid purchase bill(s) pending</Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Payment Amount ₹ *"
+                type="number"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                fullWidth
+                size="small"
+                inputProps={{ min: 1, max: totalOwed }}
+                sx={{ mb: 1.5 }}
+              />
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Payment Method</InputLabel>
+                    <Select value={paymentMethod} label="Payment Method" onChange={(e) => setPaymentMethod(e.target.value)}>
+                      <MenuItem value="Cash">Cash</MenuItem>
+                      <MenuItem value="UPI">UPI</MenuItem>
+                      <MenuItem value="Card">Card</MenuItem>
+                      <MenuItem value="Net Banking">Net Banking</MenuItem>
+                      <MenuItem value="Cheque">Cheque</MenuItem>
+                      <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
+                      <MenuItem value="Other">Other</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Payment Date *"
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    fullWidth
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              </Grid>
+            </Grid>
+          </Grid>
+
+          <TextField
+            label="Notes / Remarks"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            fullWidth
+            size="small"
+            placeholder="Transaction ID, Cheque No, remarks..."
+            multiline
+            rows={2}
+          />
+
+          <Divider />
+
+          <Box>
+            <Typography variant="subtitle2" fontWeight={700} color="primary.main" gutterBottom>
+              FIFO Payment Allocation Preview (Auto-allocates across oldest purchase bills)
+            </Typography>
+            {isPurchasesLoading ? (
+              <Skeleton height={120} />
+            ) : unpaidPurchases.length === 0 ? (
+              <Typography color="text.secondary" variant="body2">No unpaid purchase bills found for this supplier.</Typography>
+            ) : (
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead sx={{ bgcolor: 'action.hover' }}>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Invoice #</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Bill Total</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Owed</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>Allocated Payment</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>Updated Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {allocations.map((row) => (
+                      <TableRow key={row._id} hover>
+                        <TableCell><strong>{row.invoiceNumber}</strong></TableCell>
+                        <TableCell>{formatDateDDMMYYYY(row.purchaseDate || row.createdAt)}</TableCell>
+                        <TableCell align="right">{formatCurrency(row.totalAmount)}</TableCell>
+                        <TableCell align="right" sx={{ color: 'error.main', fontWeight: 600 }}>{formatCurrency(row.owed)}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 800, color: 'success.main' }}>
+                          {formatCurrency(row.allocated)}
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip
+                            label={row.newStatus}
+                            size="small"
+                            color={row.newStatus === 'Paid' ? 'success' : row.newStatus === 'Partially Paid' ? 'warning' : 'default'}
+                            sx={{ fontWeight: 700 }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Box>
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} variant="outlined">Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={isSubmitting || !payAmount || Number(payAmount) <= 0 || unpaidPurchases.length === 0}
+        >
+          {isSubmitting ? 'Recording Payment...' : `Submit Payment (${formatCurrency(payAmount)})`}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Helper to extract and group payment logs for a supplier across all purchases
+const extractSupplierPaymentHistory = (purchases = []) => {
+  const rawPayments = [];
+
+  purchases.forEach((p) => {
+    const invoiceNum = p?.invoiceNumber || '-';
+    const paymentsList = Array.isArray(p?.payments) && p.payments.length > 0 ? p.payments : [];
+
+    if (paymentsList.length > 0) {
+      paymentsList.forEach((pay) => {
+        const amt = Number(pay?.amount) || 0;
+        if (amt <= 0) return;
+        rawPayments.push({
+          id: pay?._id?.toString() || `${p?._id}-${Math.random()}`,
+          paymentGroupId: pay?.paymentGroupId || null,
+          invoiceNumber: invoiceNum,
+          amount: amt,
+          paymentDate: pay?.paymentDate || p?.paidDate || p?.purchaseDate || p?.createdAt,
+          paymentMethod: pay?.paymentMethod || p?.paymentMethod || 'Cash',
+          note: pay?.note || p?.notes || '',
+        });
+      });
+    } else if ((Number(p?.paidAmount) || 0) > 0) {
+      // Fallback for legacy purchase data without payments array
+      rawPayments.push({
+        id: `legacy-${p?._id}`,
+        paymentGroupId: null,
+        invoiceNumber: invoiceNum,
+        amount: Number(p?.paidAmount),
+        paymentDate: p?.paidDate || p?.purchaseDate || p?.createdAt,
+        paymentMethod: p?.paymentMethod || 'Cash',
+        note: p?.notes || '',
+      });
+    }
+  });
+
+  // Group items that belong to the same bulk payment transaction (same paymentGroupId)
+  const groupedMap = new Map();
+  rawPayments.forEach((item) => {
+    const groupKey = item.paymentGroupId ? `group-${item.paymentGroupId}` : `single-${item.id}`;
+    if (!groupedMap.has(groupKey)) {
+      groupedMap.set(groupKey, {
+        key: groupKey,
+        paymentDate: item.paymentDate,
+        billNumbers: [item.invoiceNumber],
+        paymentMethod: item.paymentMethod,
+        amountPaid: item.amount,
+        note: item.note,
+      });
+    } else {
+      const existing = groupedMap.get(groupKey);
+      if (!existing.billNumbers.includes(item.invoiceNumber)) {
+        existing.billNumbers.push(item.invoiceNumber);
+      }
+      existing.amountPaid += item.amount;
+      if (!existing.note && item.note) {
+        existing.note = item.note;
+      }
+    }
+  });
+
+  const list = Array.from(groupedMap.values()).map((entry) => ({
+    ...entry,
+    billNumberDisplay: entry.billNumbers.join(', '),
+  }));
+
+  list.sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
+  return list;
+};
+
+// ========== Supplier Date-Wise Payment History Dialog ==========
+const SupplierPaymentHistoryDialog = ({ open, onClose, supplier }) => {
+  const { data: purchasesData, isLoading } = useGetPurchasesBySupplierQuery(supplier?._id, {
+    skip: !open || !supplier?._id,
+  });
+  const purchases = purchasesData?.data || [];
+
+  const paymentHistory = useMemo(() => {
+    return extractSupplierPaymentHistory(purchases);
+  }, [purchases]);
+
+  const totalPaidSum = useMemo(() => {
+    return paymentHistory.reduce((sum, item) => sum + (Number(item.amountPaid) || 0), 0);
+  }, [paymentHistory]);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <HistoryIcon color="primary" />
+          <Typography variant="h6" fontWeight={800}>
+            Payment History Log - {supplier?.name}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        {isLoading ? (
+          <Skeleton height={200} />
+        ) : paymentHistory.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="body1" color="text.secondary">
+              No payment transactions logged yet for this supplier.
+            </Typography>
+          </Box>
+        ) : (
+          <Stack spacing={2}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Total Logged Payments: <strong>{paymentHistory.length} transaction(s)</strong>
+              </Typography>
+              <Typography variant="subtitle2" color="success.main" fontWeight={800}>
+                Total Paid: {formatCurrency(totalPaidSum)}
+              </Typography>
+            </Box>
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead sx={{ bgcolor: 'action.hover' }}>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Payment Date</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Bill #</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Method</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Amount Paid</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Notes / Remarks</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {paymentHistory.map((item) => (
+                    <TableRow key={item.key} hover>
+                      <TableCell sx={{ fontSize: '0.8rem' }}>
+                        {formatDateDDMMYYYY(item.paymentDate)}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                        {item.billNumberDisplay}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem' }}>
+                        <Chip label={item.paymentMethod || 'Cash'} size="small" variant="outlined" sx={{ fontSize: '0.75rem', height: 22 }} />
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 800, color: 'success.main' }}>
+                        {formatCurrency(item.amountPaid)}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem', color: item.note ? 'text.primary' : 'text.secondary' }}>
+                        {item.note || '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose} variant="outlined">Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// ========== Supplier Row with Purchase Bills & Payment History ==========
 const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) => {
   const [open, setOpen] = useState(false);
   const [viewPurchase, setViewPurchase] = useState(null);
   const [editingPurchase, setEditingPurchase] = useState(null);
   const [showPurchaseForm, setShowPurchaseForm] = useState(false);
   const [paymentPurchase, setPaymentPurchase] = useState(null);
-  const { data: purchasesData } = useGetPurchasesBySupplierQuery(supplier._id, { skip: !open });
+  const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const { data: purchasesData } = useGetPurchasesBySupplierQuery(supplier._id, {
+    skip: !open && !bulkPaymentOpen && !historyOpen,
+  });
   const [updatePayment, { isLoading: isUpdatingPayment }] = useUpdatePurchasePaymentMutation();
   const [updatePurchase, { isLoading: isUpdatingPurchase }] = useUpdatePurchaseMutation();
 
   const purchases = purchasesData?.data || [];
 
-  const handleRecordPayment = async (amount) => {
+  const handleRecordPayment = async (payload) => {
     if (!paymentPurchase) return;
     try {
-      await updatePayment({ id: paymentPurchase._id, amount }).unwrap();
+      if (typeof payload === 'number') {
+        await updatePayment({ id: paymentPurchase._id, amount: payload }).unwrap();
+      } else {
+        await updatePayment({ id: paymentPurchase._id, ...payload }).unwrap();
+      }
       setPaymentPurchase(null);
     } catch (err) {
       alert(err?.data?.message || 'Failed to update payment status');
@@ -717,6 +1141,11 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
     }
   };
 
+  // Extract and group payment logs for this supplier across all purchases (combining multi-bill transactions into a single entry)
+  const paymentHistory = useMemo(() => {
+    return extractSupplierPaymentHistory(purchases);
+  }, [purchases]);
+
   return (
     <>
       <TableRow hover sx={{ '& > *': { borderBottom: 'unset' } }}>
@@ -732,12 +1161,43 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
         <TableCell align="center">{supplier.purchaseCount || 0}</TableCell>
         <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(supplier.totalPurchases)}</TableCell>
         <TableCell align="right">
-          <Chip label={formatCurrency(supplier.unpaidAmount)} size="small" color={supplier.unpaidAmount > 0 ? 'warning' : 'success'} variant="outlined" sx={{ fontWeight: 700 }} />
+          <Tooltip title={supplier.unpaidAmount > 0 ? 'Click to record payment across bills' : 'No outstanding amount'}>
+            <Chip
+              label={formatCurrency(supplier.unpaidAmount)}
+              size="small"
+              color={supplier.unpaidAmount > 0 ? 'warning' : 'success'}
+              variant="outlined"
+              onClick={() => supplier.unpaidAmount > 0 && setBulkPaymentOpen(true)}
+              sx={{
+                fontWeight: 700,
+                cursor: supplier.unpaidAmount > 0 ? 'pointer' : 'default',
+                '&:hover': supplier.unpaidAmount > 0 ? { bgcolor: 'warning.main', color: '#fff' } : {},
+              }}
+            />
+          </Tooltip>
         </TableCell>
         <TableCell>
-          {isAdmin && (
-            <IconButton size="small" onClick={() => onEdit(supplier)} title="Edit Supplier"><EditIcon fontSize="small" /></IconButton>
-          )}
+          <Stack direction="row" spacing={0.5}>
+            <Tooltip title="Payment History Log">
+              <IconButton size="small" onClick={() => setHistoryOpen(true)}>
+                <HistoryIcon fontSize="small" color="action" />
+              </IconButton>
+            </Tooltip>
+            {supplier.unpaidAmount > 0 && (
+              <Tooltip title="Record Bulk Payment">
+                <IconButton size="small" color="primary" onClick={() => setBulkPaymentOpen(true)}>
+                  <PaymentIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            {isAdmin && (
+              <Tooltip title="Edit Supplier">
+                <IconButton size="small" onClick={() => onEdit(supplier)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Stack>
         </TableCell>
       </TableRow>
       <TableRow>
@@ -748,9 +1208,22 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main' }}>
                   Purchase Bills ({purchases.length})
                 </Typography>
-                <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setShowPurchaseForm(true)}>
-                  Add Stock Receipt / Purchase Bill
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  {supplier.unpaidAmount > 0 && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="primary"
+                      startIcon={<PaymentIcon />}
+                      onClick={() => setBulkPaymentOpen(true)}
+                    >
+                      Record Payment ({formatCurrency(supplier.unpaidAmount)})
+                    </Button>
+                  )}
+                  <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setShowPurchaseForm(true)}>
+                    Add Stock Receipt / Purchase Bill
+                  </Button>
+                </Stack>
               </Box>
               {purchases.length > 0 ? (
                 <Table size="small">
@@ -772,10 +1245,10 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                   </TableHead>
                   <TableBody>
                     {purchases.map((p) => {
-                      const totalQty = p.items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0;
+                      const totalQty = p.items?.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0) || 0;
                       const subtotal = Number(p.subtotal) || 0;
                       const paid = p.paidAmount || 0;
-                      const remaining = Math.max(0, p.totalAmount - paid);
+                      const remaining = Math.max(0, (p.totalAmount || 0) - paid);
                       const isPaid = p.paymentStatus === 'Paid';
                       const isPartial = p.paymentStatus === 'Partially Paid';
                       return (
@@ -789,16 +1262,27 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>{formatCurrency(p.travelCharge || 0)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatCurrency(p.totalAmount)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', color: 'success.main' }}>{formatCurrency(paid)}</TableCell>
-                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700, color: remaining > 0 ? 'error.main' : 'text.secondary' }}>
+                          <TableCell
+                            align="right"
+                            onClick={() => remaining > 0 && setBulkPaymentOpen(true)}
+                            sx={{
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              color: remaining > 0 ? 'error.main' : 'text.secondary',
+                              cursor: remaining > 0 ? 'pointer' : 'default',
+                              '&:hover': remaining > 0 ? { textDecoration: 'underline' } : {},
+                            }}
+                          >
                             {formatCurrency(remaining)}
                           </TableCell>
                           <TableCell align="center">
                             <Chip
-                              label={p.paymentStatus}
+                              label={p.paymentStatus || 'Unpaid'}
                               size="small"
                               color={isPaid ? 'success' : isPartial ? 'warning' : 'error'}
                               onClick={() => !isPaid && setPaymentPurchase(p)}
                               sx={{ fontWeight: 700, cursor: isPaid ? 'default' : 'pointer', minWidth: 75 }}
+                              title={isPaid ? 'Fully Paid (Status cannot be changed)' : 'Click to record payment for this bill'}
                             />
                           </TableCell>
                           <TableCell align="center">
@@ -823,6 +1307,56 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
                   No purchase bills yet.
                 </Typography>
               )}
+
+              {/* Payment History Log Table Grid */}
+              <Box sx={{ mt: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <HistoryIcon fontSize="small" />
+                    Payment History Log ({paymentHistory.length})
+                  </Typography>
+                </Box>
+                {paymentHistory.length > 0 ? (
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead sx={{ bgcolor: 'action.hover' }}>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Payment Date</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Bill #</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Method</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Amount Paid</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Notes / Remarks</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {paymentHistory.map((item) => (
+                          <TableRow key={item.key} hover>
+                            <TableCell sx={{ fontSize: '0.8rem' }}>
+                              {formatDateDDMMYYYY(item.paymentDate)}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                              {item.billNumberDisplay}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: '0.8rem' }}>
+                              <Chip label={item.paymentMethod || 'Cash'} size="small" variant="outlined" sx={{ fontSize: '0.75rem', height: 22 }} />
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'success.main' }}>
+                              {formatCurrency(item.amountPaid)}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: '0.8rem', color: item.note ? 'text.primary' : 'text.secondary' }}>
+                              {item.note || '-'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                    No payment history recorded yet for this supplier.
+                  </Typography>
+                )}
+              </Box>
             </Box>
           </Collapse>
         </TableCell>
@@ -852,11 +1386,25 @@ const SupplierRow = ({ supplier, onEdit, products, refetchProducts, isAdmin }) =
         <RecordPaymentDialog
           open={Boolean(paymentPurchase)}
           onClose={() => setPaymentPurchase(null)}
-          billNumber={paymentPurchase.invoiceNumber}
-          totalAmount={paymentPurchase.totalAmount}
-          paidAmount={paymentPurchase.paidAmount}
+          purchase={paymentPurchase}
           onSave={handleRecordPayment}
           isLoading={isUpdatingPayment}
+        />
+      )}
+
+      {bulkPaymentOpen && (
+        <SupplierBulkPaymentDialog
+          open={bulkPaymentOpen}
+          onClose={() => setBulkPaymentOpen(false)}
+          supplier={supplier}
+        />
+      )}
+
+      {historyOpen && (
+        <SupplierPaymentHistoryDialog
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          supplier={supplier}
         />
       )}
 

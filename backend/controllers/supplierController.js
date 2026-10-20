@@ -155,10 +155,123 @@ const deleteSupplier = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Record bulk payment for a supplier (distribute FIFO across unpaid purchase bills)
+ * @route   POST /api/suppliers/:id/payment
+ * @access  Private/Admin
+ */
+const recordSupplierPayment = asyncHandler(async (req, res) => {
+  const { amount, paymentMethod, note, paymentDate } = req.body;
+  const supplierId = req.params.id;
+
+  const supplier = await Supplier.findById(supplierId);
+  if (!supplier) {
+    return res.status(404).json({ success: false, message: 'Supplier not found' });
+  }
+
+  const payAmount = Number(amount);
+  if (isNaN(payAmount) || payAmount <= 0) {
+    return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
+  }
+
+  // Find all unpaid / partially paid purchase bills for this supplier sorted by purchaseDate/createdAt ASC (FIFO)
+  const unpaidPurchases = await Purchase.find({
+    supplier: supplierId,
+    paymentStatus: { $in: ['Unpaid', 'Partially Paid'] },
+  }).sort({ purchaseDate: 1, createdAt: 1 });
+
+  if (unpaidPurchases.length === 0) {
+    return res.status(400).json({ success: false, message: 'No outstanding purchase bills found for this supplier' });
+  }
+
+  let remainingToDistribute = payAmount;
+  let totalDistributed = 0;
+  const updatedPurchases = [];
+  const pDate = paymentDate ? new Date(paymentDate) : new Date();
+  const pMethod = paymentMethod || 'Cash';
+  const paymentGroupId = `SPAY-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  for (const purchase of unpaidPurchases) {
+    if (remainingToDistribute <= 0) break;
+
+    const currentPaid = purchase.paidAmount || 0;
+    const purchaseOwed = Math.max(0, purchase.totalAmount - currentPaid);
+
+    if (purchaseOwed <= 0) continue;
+
+    const alloc = Math.min(purchaseOwed, remainingToDistribute);
+    const newPaid = currentPaid + alloc;
+    let newStatus = 'Unpaid';
+
+    if (newPaid >= purchase.totalAmount) {
+      newStatus = 'Paid';
+      purchase.paidDate = pDate;
+    } else if (newPaid > 0) {
+      newStatus = 'Partially Paid';
+    }
+
+    purchase.paidAmount = newPaid;
+    purchase.paymentStatus = newStatus;
+    purchase.paymentMethod = pMethod;
+
+    if (!purchase.payments) {
+      purchase.payments = [];
+    }
+    purchase.payments.push({
+      amount: alloc,
+      paymentDate: pDate,
+      paymentMethod: pMethod,
+      paymentGroupId,
+      note: note || '',
+      recordedBy: req.user?._id,
+    });
+
+    await purchase.save();
+
+    totalDistributed += alloc;
+    remainingToDistribute -= alloc;
+    updatedPurchases.push(purchase);
+  }
+
+  // Recalculate supplier's total pendingCredit based on remaining unpaid bills
+  const remainingPurchasesAgg = await Purchase.aggregate([
+    { $match: { supplier: supplier._id, paymentStatus: { $in: ['Unpaid', 'Partially Paid'] } } },
+    { $group: { _id: null, totalPending: { $sum: { $subtract: ['$totalAmount', { $ifNull: ['$paidAmount', 0] }] } } } },
+  ]);
+  const newPendingCredit = remainingPurchasesAgg[0]?.totalPending || 0;
+  supplier.pendingCredit = Math.max(0, Math.round(newPendingCredit));
+  await supplier.save();
+
+  // Log activity
+  try {
+    const ActivityLog = require('../models/ActivityLog');
+    await ActivityLog.create({
+      userId: req.user?._id,
+      userName: req.user?.fullName || 'System',
+      action: 'PAYMENT',
+      resource: 'SUPPLIER',
+      resourceId: supplier._id,
+      description: `Bulk payment of ₹${totalDistributed} recorded for supplier "${supplier.name}"`,
+    });
+  } catch (e) {
+    // Non-fatal if activity log is not configured or optional
+  }
+
+  res.status(200).json({
+    success: true,
+    data: {
+      supplier,
+      totalDistributed,
+      updatedPurchases,
+    },
+  });
+});
+
 module.exports = {
   getSuppliers,
   getSupplierById,
   createSupplier,
   updateSupplier,
   deleteSupplier,
+  recordSupplierPayment,
 };

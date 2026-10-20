@@ -33,6 +33,14 @@ export const supplierApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Suppliers'],
     }),
+    recordSupplierPayment: builder.mutation({
+      query: ({ id, ...data }) => ({
+        url: `/suppliers/${id}/payment`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['Suppliers', 'Purchases', 'Dashboard'],
+    }),
   }),
 });
 
@@ -42,4 +50,5 @@ export const {
   useCreateSupplierMutation,
   useUpdateSupplierMutation,
   useDeleteSupplierMutation,
+  useRecordSupplierPaymentMutation,
 } = supplierApi;

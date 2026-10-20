@@ -40,6 +40,12 @@ const billItemSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  imeiNumbers: [
+    {
+      type: String,
+      trim: true,
+    },
+  ],
   total: {
     type: Number,
     required: true,

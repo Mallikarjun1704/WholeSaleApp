@@ -32,6 +32,36 @@ const purchaseItemSchema = new mongoose.Schema({
   },
 });
 
+const paymentLogSchema = new mongoose.Schema({
+  amount: {
+    type: Number,
+    required: true,
+  },
+  paymentDate: {
+    type: Date,
+    default: Date.now,
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['Cash', 'Card', 'UPI', 'Credit', 'Net Banking', 'Cheque', 'Mixed', 'Other', 'Bank Transfer'],
+    default: 'Cash',
+  },
+  paymentGroupId: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  note: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  recordedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+});
+
 const purchaseSchema = new mongoose.Schema(
   {
     invoiceNumber: {
@@ -83,6 +113,11 @@ const purchaseSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    paymentMethod: {
+      type: String,
+      enum: ['Cash', 'Card', 'UPI', 'Credit', 'Net Banking', 'Cheque', 'Mixed', 'Other', 'Bank Transfer'],
+      default: 'Cash',
+    },
     paymentStatus: {
       type: String,
       enum: ['Unpaid', 'Partially Paid', 'Paid'],
@@ -92,6 +127,7 @@ const purchaseSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    payments: [paymentLogSchema],
     notes: {
       type: String,
       trim: true,

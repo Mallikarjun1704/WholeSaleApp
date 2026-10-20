@@ -83,8 +83,10 @@ const generateBillPdfStream = (bill, settings = {}) => {
       const itemName = item.name || item.product?.name || 'Mobile Product';
 
       // Build item name with IMEI if available
-      const imeiList = item.product?.imeiList;
-      const hasImei = item.product?.imeiTracking && Array.isArray(imeiList) && imeiList.length > 0;
+      const imeiList = (item.imeiNumbers && Array.isArray(item.imeiNumbers) && item.imeiNumbers.length > 0)
+        ? item.imeiNumbers
+        : (item.product?.imeiTracking && Array.isArray(item.product?.imeiList) && item.product.imeiList.length > 0 ? item.product.imeiList : []);
+      const hasImei = Array.isArray(imeiList) && imeiList.length > 0;
       const itemNameContent = hasImei
         ? {
             stack: [

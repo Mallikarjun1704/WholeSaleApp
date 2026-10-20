@@ -100,6 +100,19 @@ const createBill = asyncHandler(async (req, res) => {
     subtotal += taxableAmount;
     totalGst += gstAmount;
 
+    // Parse IMEI numbers (optional)
+    let imeiNumbers = [];
+    if (item.imeiNumbers && Array.isArray(item.imeiNumbers)) {
+      imeiNumbers = item.imeiNumbers
+        .map((imei) => (typeof imei === 'string' ? imei.trim() : String(imei).trim()))
+        .filter((imei) => imei.length > 0);
+    } else if (typeof item.imeiNumbers === 'string' && item.imeiNumbers.trim()) {
+      imeiNumbers = item.imeiNumbers
+        .split(',')
+        .map((imei) => imei.trim())
+        .filter((imei) => imei.length > 0);
+    }
+
     processedItems.push({
       product: product._id,
       batch: batchRef,
@@ -110,6 +123,7 @@ const createBill = asyncHandler(async (req, res) => {
       taxableAmount,
       gstRate,
       gstAmount,
+      imeiNumbers,
       total: itemTotal,
     });
   }
@@ -656,6 +670,19 @@ const updateBill = asyncHandler(async (req, res) => {
       newSubtotal += taxableAmount;
       newTotalGst += gstAmount;
 
+      // Parse IMEI numbers (optional)
+      let imeiNumbers = [];
+      if (item.imeiNumbers && Array.isArray(item.imeiNumbers)) {
+        imeiNumbers = item.imeiNumbers
+          .map((imei) => (typeof imei === 'string' ? imei.trim() : String(imei).trim()))
+          .filter((imei) => imei.length > 0);
+      } else if (typeof item.imeiNumbers === 'string' && item.imeiNumbers.trim()) {
+        imeiNumbers = item.imeiNumbers
+          .split(',')
+          .map((imei) => imei.trim())
+          .filter((imei) => imei.length > 0);
+      }
+
       processedItems.push({
         product: product._id,
         batch: batchRef,
@@ -666,6 +693,7 @@ const updateBill = asyncHandler(async (req, res) => {
         taxableAmount,
         gstRate,
         gstAmount,
+        imeiNumbers,
         total: itemTotal,
       });
     }

@@ -106,6 +106,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
                 <TableCell align="right" sx={{ color: '#fff', fontWeight: 700 }}>Price Per Unit</TableCell>
                 <TableCell align="right" sx={{ color: '#fff', fontWeight: 700 }}>GST</TableCell>
                 <TableCell align="right" sx={{ color: '#fff', fontWeight: 700 }}>Total Amount</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700 }}>IMEI Numbers</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -117,6 +118,9 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
                   <TableCell align="right">{formatCurrency(item.sellingPrice)}</TableCell>
                   <TableCell align="right">{formatCurrency(item.gstAmount)} ({item.gstRate}%)</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(item.total)}</TableCell>
+                  <TableCell sx={{ fontSize: '0.75rem', maxWidth: 180, wordBreak: 'break-all' }}>
+                    {item.imeiNumbers?.length > 0 ? item.imeiNumbers.join(', ') : '-'}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -176,6 +180,9 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
           quantity: item.quantity || 1,
           sellingPrice: item.sellingPrice || 0,
           gstRate: item.gstRate || 0,
+          imeiNumbers: Array.isArray(item.imeiNumbers)
+            ? item.imeiNumbers.join(', ')
+            : item.imeiNumbers || '',
         }))
       );
     }
@@ -186,7 +193,7 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
   }, [products]);
 
   const addItem = () =>
-    setItems([...items, { productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
+    setItems([...items, { productId: '', quantity: 1, sellingPrice: '', gstRate: 0, imeiNumbers: '' }]);
   const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
   const updateItem = (i, field, value) => {
     const updated = [...items];
@@ -233,6 +240,9 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
         quantity: Number(i.quantity),
         sellingPrice: Number(i.sellingPrice),
         gstRate: Number(i.gstRate) || 0,
+        imeiNumbers: i.imeiNumbers
+          ? (Array.isArray(i.imeiNumbers) ? i.imeiNumbers : i.imeiNumbers.split(',').map((s) => s.trim()).filter(Boolean))
+          : [],
       })),
     });
   };
@@ -275,7 +285,7 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
 
           {items.map((item, i) => (
             <Grid container spacing={1.5} key={i} sx={{ mb: 1.5, alignItems: 'center' }}>
-              <Grid item xs={4}>
+              <Grid item xs={3}>
                 <Autocomplete
                   options={sortedProducts}
                   getOptionLabel={(option) => (typeof option === 'string' ? option : (option?.name || ''))}
@@ -289,14 +299,24 @@ const EditBillDialog = ({ open, onClose, bill, products = [], onSave, isLoading 
                   )}
                 />
               </Grid>
-              <Grid item xs={2}>
+              <Grid item xs={1.5}>
                 <TextField label="Qty *" type="number" value={item.quantity} onChange={(e) => updateItem(i, 'quantity', e.target.value)} fullWidth size="small" />
               </Grid>
-              <Grid item xs={2.5}>
+              <Grid item xs={2}>
                 <TextField label="Selling Price ₹ *" type="number" value={item.sellingPrice} onChange={(e) => updateItem(i, 'sellingPrice', e.target.value)} fullWidth size="small" />
               </Grid>
-              <Grid item xs={2.5}>
+              <Grid item xs={1.5}>
                 <TextField label="GST %" type="number" value={item.gstRate} onChange={(e) => updateItem(i, 'gstRate', e.target.value)} fullWidth size="small" />
+              </Grid>
+              <Grid item xs={3}>
+                <TextField
+                  label="IMEI Numbers"
+                  value={item.imeiNumbers || ''}
+                  onChange={(e) => updateItem(i, 'imeiNumbers', e.target.value)}
+                  fullWidth
+                  size="small"
+                  placeholder="e.g. 8642..., 8643..."
+                />
               </Grid>
               <Grid item xs={1}>
                 {items.length > 1 && (
@@ -481,7 +501,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
   const [customerId, setCustomerId] = useState('');
   const [saleDate, setSaleDate] = useState(getLocalDateString());
   const [packingCharges, setPackingCharges] = useState(0);
-  const [items, setItems] = useState([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
+  const [items, setItems] = useState([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0, imeiNumbers: '' }]);
   const [createdBill, setCreatedBill] = useState(null);
 
   const sortedCustomers = React.useMemo(() => {
@@ -491,7 +511,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
   const selectedCustomer = customers.find(c => c._id === customerId);
   const customerOutstanding = selectedCustomer ? (Number(selectedCustomer.pendingCredit) || 0) : 0;
 
-  const addItem = () => setItems([...items, { productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
+  const addItem = () => setItems([...items, { productId: '', quantity: 1, sellingPrice: '', gstRate: 0, imeiNumbers: '' }]);
   const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
   const updateItem = (i, field, value) => {
     const updated = [...items];
@@ -537,6 +557,9 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
         quantity: Number(i.quantity),
         sellingPrice: Number(i.sellingPrice),
         gstRate: Number(i.gstRate) || 0,
+        imeiNumbers: i.imeiNumbers
+          ? (Array.isArray(i.imeiNumbers) ? i.imeiNumbers : i.imeiNumbers.split(',').map((s) => s.trim()).filter(Boolean))
+          : [],
       })),
     };
     try {
@@ -551,7 +574,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
       setCustomerId('');
       setSaleDate(getLocalDateString());
       setPackingCharges(0);
-      setItems([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0 }]);
+      setItems([{ productId: '', quantity: 1, sellingPrice: '', gstRate: 0, imeiNumbers: '' }]);
       setErrorMsg('');
     } catch (err) {
       setErrorMsg(err?.data?.message || 'Failed to generate bill');
@@ -595,26 +618,26 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
 
         return (
           <Grid container spacing={1.5} key={i} sx={{ mb: 1.5, alignItems: 'center' }}>
-            <Grid item xs={4}>
+            <Grid item xs={3}>
               <Autocomplete
-                  options={products.filter(p => p.stock > 0).sort((a, b) => (a.name || '').localeCompare(b.name || ''))}
-                  getOptionLabel={(option) => (typeof option === 'string' ? option : (option?.name || ''))}
-                  value={products.find(p => p._id === item.productId) || null}
-                  onChange={(event, newValue) => {
-                    updateItem(i, 'productId', newValue ? newValue._id : '');
-                  }}
-                  isOptionEqualToValue={(option, val) => option._id === (val?._id || val)}
-                  renderInput={(params) => (
-                    <TextField {...params} label="Select Mobile Model *" size="small" fullWidth placeholder="Type to search mobile..." />
-                  )}
-                  renderOption={(props, option) => (
-                    <li {...props} key={option._id}>
-                      {option.name}
-                    </li>
-                  )}
-                />
+                options={products.filter(p => p.stock > 0).sort((a, b) => (a.name || '').localeCompare(b.name || ''))}
+                getOptionLabel={(option) => (typeof option === 'string' ? option : (option?.name || ''))}
+                value={products.find(p => p._id === item.productId) || null}
+                onChange={(event, newValue) => {
+                  updateItem(i, 'productId', newValue ? newValue._id : '');
+                }}
+                isOptionEqualToValue={(option, val) => option._id === (val?._id || val)}
+                renderInput={(params) => (
+                  <TextField {...params} label="Select Mobile Model *" size="small" fullWidth placeholder="Type to search mobile..." />
+                )}
+                renderOption={(props, option) => (
+                  <li {...props} key={option._id}>
+                    {option.name}
+                  </li>
+                )}
+              />
             </Grid>
-            <Grid item xs={2}>
+            <Grid item xs={1.5}>
               <TextField
                 label="Qty" type="number" value={item.quantity}
                 onChange={(e) => updateItem(i, 'quantity', e.target.value)}
@@ -623,7 +646,7 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
                 helperText={selectedProd ? `Max: ${availableStock}` : ''}
               />
             </Grid>
-            <Grid item xs={2.5}>
+            <Grid item xs={2}>
               <TextField label="Price Per Unit ₹ *" type="number" value={item.sellingPrice} onChange={(e) => updateItem(i, 'sellingPrice', e.target.value)} fullWidth size="small" />
             </Grid>
             <Grid item xs={1.5}>
@@ -634,7 +657,17 @@ const CreateBillTab = ({ customers, products, onComplete }) => {
                 inputProps={{ min: 0, max: 100, step: 1 }}
               />
             </Grid>
-            <Grid item xs={2}>
+            <Grid item xs={3}>
+              <TextField
+                label="IMEI Numbers (comma-separated)"
+                value={item.imeiNumbers || ''}
+                onChange={(e) => updateItem(i, 'imeiNumbers', e.target.value)}
+                fullWidth
+                size="small"
+                placeholder="e.g. 8642..., 8643..."
+              />
+            </Grid>
+            <Grid item xs={1}>
               {items.length > 1 && (
                 <IconButton size="small" onClick={() => removeItem(i)} color="error"><DeleteIcon fontSize="small" /></IconButton>
               )}

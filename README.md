@@ -63,4 +63,4 @@ UNLICENSED - Proprietary Software
 dist-electron/Tech Mart Setup 1.0.0.exe
  (~112 MB)
 Local Dev Command: npm run electron:dev
-Build Installer Command: npm run electron:build
+Production Build Installer Command: npm run electron:build

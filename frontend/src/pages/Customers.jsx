@@ -100,6 +100,7 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
               <TableCell align="center" sx={{ fontWeight: 700 }}>Qty</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>Price</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>IMEI Numbers</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -109,11 +110,14 @@ const BillDetailsDialog = ({ open, onClose, bill }) => {
                 <TableCell align="center">{item.quantity || 0}</TableCell>
                 <TableCell align="right">{formatCurrency(item.sellingPrice || item.unitPrice || 0)}</TableCell>
                 <TableCell align="right">{formatCurrency(item.total || ((item.quantity || 0) * (item.sellingPrice || 0)))}</TableCell>
+                <TableCell sx={{ fontSize: '0.75rem', maxWidth: 160, wordBreak: 'break-all' }}>
+                  {item.imeiNumbers?.length > 0 ? item.imeiNumbers.join(', ') : '-'}
+                </TableCell>
               </TableRow>
             ))}
             {items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} align="center" sx={{ color: 'text.secondary', py: 2 }}>
+                <TableCell colSpan={5} align="center" sx={{ color: 'text.secondary', py: 2 }}>
                   No item details found.
                 </TableCell>
               </TableRow>

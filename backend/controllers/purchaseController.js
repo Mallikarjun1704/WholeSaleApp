@@ -260,7 +260,7 @@ const getPurchaseById = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const updatePurchasePaymentStatus = asyncHandler(async (req, res) => {
-  const { paymentStatus, amount } = req.body;
+  const { paymentStatus, amount, paymentMethod, paymentDate, note } = req.body;
 
   // Only master / admin can update payment status
   if (req.user?.role !== 'admin') {
@@ -295,15 +295,34 @@ const updatePurchasePaymentStatus = asyncHandler(async (req, res) => {
 
   const newPaidAmount = currentPaid + payAmount;
   let newStatus = 'Unpaid';
+  const pDate = paymentDate ? new Date(paymentDate) : new Date();
+  const pMethod = paymentMethod || purchase.paymentMethod || 'Cash';
+
   if (newPaidAmount >= purchase.totalAmount) {
     newStatus = 'Paid';
-    purchase.paidDate = new Date();
+    purchase.paidDate = pDate;
   } else if (newPaidAmount > 0) {
     newStatus = 'Partially Paid';
   }
 
   purchase.paidAmount = newPaidAmount;
   purchase.paymentStatus = newStatus;
+  purchase.paymentMethod = pMethod;
+
+  if (payAmount > 0) {
+    if (!purchase.payments) {
+      purchase.payments = [];
+    }
+    purchase.payments.push({
+      amount: payAmount,
+      paymentDate: pDate,
+      paymentMethod: pMethod,
+      paymentGroupId: `SPAY-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      note: note || '',
+      recordedBy: req.user?._id,
+    });
+  }
+
   await purchase.save();
 
   // Deduct paid amount from supplier pending credit
