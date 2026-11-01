@@ -440,24 +440,36 @@ const getDashboardDetails = asyncHandler(async (req, res) => {
 
       const detailsWithPricing = await Promise.all(
         productsWithStock.map(async (prod) => {
-          // Find batches with remaining quantity
-          const activeBatches = await Batch.find({ product: prod._id, remainingQty: { $gt: 0 } }).sort({ createdAt: 1 });
           let purchasePrice = 0;
-          let totalPurchaseAmount = 0;
 
-          if (activeBatches.length > 0) {
-            const batchVal = activeBatches.reduce((sum, b) => sum + (b.purchasePrice * b.remainingQty), 0);
-            const batchQty = activeBatches.reduce((sum, b) => sum + b.remainingQty, 0);
-            purchasePrice = batchQty > 0 ? Math.round(batchVal / batchQty) : activeBatches[0].purchasePrice;
-            totalPurchaseAmount = purchasePrice * prod.stock;
+          // Always fetch product price from the LATEST supplier bill/batch only.
+          // Sort by timestamp/creation in descending order and take the first record,
+          // strictly ignoring any previous bill prices.
+          const latestBatch = await Batch.findOne({ product: prod._id })
+            .sort({ createdAt: -1 })
+            .select('purchasePrice')
+            .lean();
+
+          if (latestBatch && typeof latestBatch.purchasePrice === 'number') {
+            purchasePrice = latestBatch.purchasePrice;
           } else {
-            // Check any latest batch for price reference
-            const lastBatch = await Batch.findOne({ product: prod._id }).sort({ createdAt: -1 });
-            if (lastBatch) {
-              purchasePrice = lastBatch.purchasePrice || 0;
-              totalPurchaseAmount = purchasePrice * prod.stock;
+            // Fallback: Check the latest supplier bill (Purchase) for this product
+            const latestPurchase = await Purchase.findOne({ 'items.product': prod._id })
+              .sort({ purchaseDate: -1, createdAt: -1 })
+              .select('items')
+              .lean();
+
+            if (latestPurchase?.items) {
+              const matchedItem = latestPurchase.items.find(
+                (item) => item.product && item.product.toString() === prod._id.toString()
+              );
+              if (matchedItem && typeof matchedItem.purchasePrice === 'number') {
+                purchasePrice = matchedItem.purchasePrice;
+              }
             }
           }
+
+          const totalPurchaseAmount = purchasePrice * prod.stock;
 
           return {
             _id: prod._id,
